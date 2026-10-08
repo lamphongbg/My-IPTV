@@ -151,23 +151,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             })
             .catch((err) => {
               if (err?.name === 'AbortError') return;
-              console.warn('Autoplay unmuted blocked by browser policy:', err);
-              // Autoplay policy: retry with muted audio only if video wasn't paused by user
-              if (video && !video.paused) {
-                video.muted = true;
-                setIsMuted(true);
-                video
-                  .play()
-                  .then(() => {
-                    setIsPlaying(true);
-                    setAutoplayMuted(true);
-                  })
-                  .catch((err2) => {
-                    if (err2?.name !== 'AbortError') {
-                      setIsPlaying(false);
-                    }
-                  });
-              }
+              // Browser Autoplay Policy: modern browsers require user interaction before playing audio.
+              // Gracefully fallback to muted autoplay so video starts immediately without getting stuck.
+              video.muted = true;
+              setIsMuted(true);
+              video
+                .play()
+                .then(() => {
+                  setIsPlaying(true);
+                  setAutoplayMuted(true);
+                })
+                .catch((err2) => {
+                  if (err2?.name !== 'AbortError') {
+                    setIsPlaying(false);
+                  }
+                });
             });
         });
 
@@ -251,31 +249,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           })
           .catch((err) => {
             if (err?.name === 'AbortError') return;
-            console.warn('Native playback error or unmuted autoplay blocked:', err);
-            // Fallback: try muted autoplay only if video is still active and not paused
-            if (video && !video.paused) {
-              video.muted = true;
-              setIsMuted(true);
-              video
-                .play()
-                .then(() => {
-                  setIsPlaying(true);
+            // Fallback: try muted autoplay immediately if unmuted was blocked by browser
+            video.muted = true;
+            setIsMuted(true);
+            video
+              .play()
+              .then(() => {
+                setIsPlaying(true);
+                setIsLoading(false);
+                setAutoplayMuted(true);
+              })
+              .catch((err2) => {
+                if (err2?.name === 'AbortError') return;
+                if (!proxyMode) {
+                  console.info('Switching to proxy mode on native error...');
+                  setUseProxy(true);
+                  startPlayback(true);
+                } else {
                   setIsLoading(false);
-                  setAutoplayMuted(true);
-                })
-                .catch((err2) => {
-                  if (err2?.name === 'AbortError') return;
-                  if (!proxyMode) {
-                    console.info('Switching to proxy mode on native error...');
-                    setUseProxy(true);
-                    startPlayback(true);
-                  } else {
-                    setIsLoading(false);
-                    setHasError(true);
-                    setErrorMessage('Trình duyệt không thể phát trực tiếp luồng này.');
-                  }
-                });
-            }
+                  setHasError(true);
+                  setErrorMessage('Trình duyệt không thể phát trực tiếp luồng này.');
+                }
+              });
           });
         return;
       }
@@ -288,17 +283,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         .then(() => {
           setIsPlaying(true);
           setIsLoading(false);
+          setAutoplayMuted(false);
         })
         .catch((err) => {
           if (err?.name === 'AbortError') return;
-          if (!proxyMode) {
-            setUseProxy(true);
-            startPlayback(true);
-          } else {
-            setHasError(true);
-            setErrorMessage('Trình duyệt không hỗ trợ giải mã trực tiếp luồng này.');
-            setIsLoading(false);
-          }
+          video.muted = true;
+          setIsMuted(true);
+          video
+            .play()
+            .then(() => {
+              setIsPlaying(true);
+              setIsLoading(false);
+              setAutoplayMuted(true);
+            })
+            .catch((err2) => {
+              if (err2?.name === 'AbortError') return;
+              if (!proxyMode) {
+                setUseProxy(true);
+                startPlayback(true);
+              } else {
+                setHasError(true);
+                setErrorMessage('Trình duyệt không hỗ trợ giải mã trực tiếp luồng này.');
+                setIsLoading(false);
+              }
+            });
         });
     },
     [channel, getStreamSource]
@@ -341,6 +349,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const video = videoRef.current;
     if (!video) return;
 
+    // If currently playing in autoplay muted state, clicking the video screen seamlessly un-mutes audio!
+    if (autoplayMuted && !video.paused) {
+      video.muted = false;
+      setIsMuted(false);
+      setAutoplayMuted(false);
+      triggerFeedback('play');
+      return;
+    }
+
     // Check DOM ground truth rather than stale React state
     const isCurrentlyPaused = video.paused || video.ended;
 
@@ -369,27 +386,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               setIsPlaying(false);
               return;
             }
-            console.warn('Playback play request blocked:', err);
-            // Retry muted only if user hasn't paused the video
-            if (video && !video.paused) {
-              video.muted = true;
-              setIsMuted(true);
-              video
-                .play()
-                .then(() => {
-                  setIsPlaying(true);
-                  setAutoplayMuted(true);
-                })
-                .catch((err2) => {
-                  if (err2?.name !== 'AbortError') {
-                    setIsPlaying(false);
-                  }
-                });
-            }
+            // Retry muted if browser policy blocked unmuted play
+            video.muted = true;
+            setIsMuted(true);
+            video
+              .play()
+              .then(() => {
+                setIsPlaying(true);
+                setAutoplayMuted(true);
+              })
+              .catch((err2) => {
+                if (err2?.name !== 'AbortError') {
+                  setIsPlaying(false);
+                }
+              });
           });
       }
     }
-  }, [triggerFeedback]);
+  }, [autoplayMuted, triggerFeedback]);
 
   const handleToggleMute = useCallback(() => {
     if (!videoRef.current) return;
@@ -560,17 +574,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         {/* Autoplay Muted Notice */}
         {isPlaying && autoplayMuted && (
-          <div
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               handleUnmuteAudio();
             }}
-            className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-amber-500 text-neutral-950 px-3.5 py-1.5 rounded-full font-bold text-xs flex items-center gap-1.5 shadow-lg cursor-pointer hover:bg-amber-400 transition animate-bounce"
-            title="Nhấn để bật âm thanh"
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-amber-500 hover:bg-amber-400 text-neutral-950 px-4 py-2 rounded-full font-bold text-xs sm:text-sm flex items-center gap-2 shadow-2xl cursor-pointer transition transform hover:scale-105 active:scale-95 animate-bounce border border-amber-300"
+            title="Nhấn để bật âm thanh (Chính sách bảo mật trình duyệt yêu cầu tương tác để mở âm thanh)"
           >
             <VolumeX className="w-4 h-4" />
-            <span>Đang tắt tiếng. Bấm vào đây để BẬT TIẾNG!</span>
-          </div>
+            <span>Đang phát tắt tiếng. Bấm vào đây để BẬT TIẾNG!</span>
+          </button>
         )}
 
         {/* Loading Overlay */}
