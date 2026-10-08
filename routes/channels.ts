@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { spawn } from 'child_process';
 import type { Channel } from '../src/types/iptv.js';
 import { parseM3U, generateM3U } from '../utils/m3uParser.js';
 import {
@@ -172,6 +173,76 @@ function sanitizeM3uFilename(name: string, fallback: string = 'channel'): string
   return ascii || fallback;
 }
 
+// Live MPEG-TS stream endpoint specifically designed for CorePlayer (Symbian S60 / Mobile)
+// Remuxes HLS (.m3u8) on-the-fly into continuous MPEG-TS packets using ffmpeg (-c copy)
+// CorePlayer natively supports MPEG-TS container with H.264 / AAC
+router.get(['/api/channel/:id/live.ts', '/api/channel/:id/stream.ts'], async (req: Request, res: Response) => {
+  try {
+    const channel = await getChannelById(req.params.id);
+    if (!channel) {
+      return res.status(404).send('Channel not found');
+    }
+
+    const streamUrl = channel.stream_url;
+
+    res.setHeader('Content-Type', 'video/mp2t');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Connection', 'close');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    // Spawn ffmpeg with copy codecs: 0 re-encoding, extremely lightweight
+    const ffmpeg = spawn('ffmpeg', [
+      '-re',
+      '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
+      '-i', streamUrl,
+      '-c', 'copy',
+      '-f', 'mpegts',
+      'pipe:1'
+    ]);
+
+    ffmpeg.stdout.pipe(res);
+
+    let isCleanedUp = false;
+    const cleanup = () => {
+      if (!isCleanedUp) {
+        isCleanedUp = true;
+        ffmpeg.stdout.unpipe(res);
+        try {
+          ffmpeg.kill('SIGTERM');
+        } catch {
+          // Ignore
+        }
+      }
+    };
+
+    req.on('close', cleanup);
+    res.on('close', cleanup);
+    res.on('finish', cleanup);
+
+    ffmpeg.stderr.on('data', () => {
+      // Consume stderr so buffer does not block
+    });
+
+    ffmpeg.on('error', (err) => {
+      console.warn('[FFmpeg Stream Error]', err.message);
+      cleanup();
+      if (!res.headersSent) {
+        res.status(502).send('Error streaming channel');
+      }
+    });
+
+    ffmpeg.on('close', () => {
+      cleanup();
+    });
+  } catch (err: any) {
+    if (!res.headersSent) {
+      res.status(500).send('Internal server error');
+    }
+  }
+});
+
 // Export single-channel M3U / M3U8 playlist file for VLC Media Player and Nokia CorePlayer
 router.get(
   [
@@ -192,16 +263,31 @@ router.get(
       const safeAsciiName = sanitizeM3uFilename(channel.name, `channel_${channel.id}`);
       const cleanDisplayName = channel.name.replace(/["\r\n]/g, '').trim();
 
-      // CRLF (\r\n) is strictly required by Windows media parsers and VLC playlist engine
-      const ext = isM3u8 ? 'm3u8' : 'm3u';
-      const m3uBody = `#EXTM3U\r\n#EXTINF:-1 tvg-id="${channel.tvg_id || channel.id}" tvg-name="${cleanDisplayName}" tvg-logo="${channel.logo || ''}" group-title="${channel.group || 'IPTV'}",${cleanDisplayName}\r\n${channel.stream_url}\r\n`;
+      const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+      const host = req.get('host') || '127.0.0.1:3000';
+      const liveTsUrl = `${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
 
-      // UTF-8 BOM (\uFEFF) ensures Windows, VLC, and text editors correctly identify UTF-8
-      const content = '\uFEFF' + m3uBody;
+      let m3uBody: string;
 
+      if (isCorePlayer) {
+        // STRICT CorePlayer compatibility:
+        // 1. NO UTF-8 BOM (\uFEFF) - BOM corrupts CorePlayer's parser causing "Error opening file"
+        // 2. Simple EXTINF without quotes or unsupported IPTV metadata tags
+        // 3. Direct MPEG-TS live remux (.ts) as primary stream (CorePlayer natively plays MPEG-TS, but NOT .m3u8)
+        // 4. Raw stream URL as secondary entry
+        m3uBody = `#EXTM3U\r\n#EXTINF:0,${safeAsciiName} (MPEG-TS Live)\r\n${liveTsUrl}\r\n#EXTINF:0,${safeAsciiName} (Stream Goc)\r\n${channel.stream_url}\r\n`;
+      } else {
+        // Standard VLC / Modern IPTV playlist
+        const ext = isM3u8 ? 'm3u8' : 'm3u';
+        m3uBody = `#EXTM3U\r\n#EXTINF:-1 tvg-id="${channel.tvg_id || channel.id}" tvg-name="${cleanDisplayName}" tvg-logo="${channel.logo || ''}" group-title="${channel.group || 'IPTV'}",${cleanDisplayName}\r\n${channel.stream_url}\r\n`;
+      }
+
+      // DO NOT prepend BOM (\uFEFF): Standard UTF-8 without BOM is compatible with CorePlayer, VLC, and RFC 8216
       const mimeType = isM3u8
         ? 'application/vnd.apple.mpegurl; charset=utf-8'
         : 'audio/x-mpegurl; charset=utf-8';
+
+      const fileExt = isM3u8 ? 'm3u8' : 'm3u';
 
       res.setHeader('Content-Type', mimeType);
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -209,9 +295,9 @@ router.get(
       res.setHeader('Expires', '0');
       res.setHeader(
         'Content-Disposition',
-        `${isCorePlayer ? 'inline' : 'attachment'}; filename="${safeAsciiName}.${ext}"`
+        `attachment; filename="${safeAsciiName}.${fileExt}"`
       );
-      res.send(Buffer.from(content, 'utf-8'));
+      res.send(Buffer.from(m3uBody, 'utf-8'));
     } catch (err: any) {
       res.status(500).send('#EXTM3U\r\n# Error generating channel playlist\r\n');
     }

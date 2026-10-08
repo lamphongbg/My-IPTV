@@ -386,12 +386,20 @@ ${LEGACY_CSS}
       &#9654; MỞ BẰNG COREPLAYER
     </a>
 
-    <a class="btn" style="background:#1e7e34;border:1px solid #28a745;color:#fff;display:block;margin:6px auto;width:80%;padding:8px 10px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u">
-      &#9654; TỰ ĐỘNG KHỞI CHẠY COREPLAYER (.M3U)
+    <a class="btn" style="background:#1e7e34;border:1px solid #28a745;color:#fff;display:block;margin:6px auto;width:85%;padding:8px 10px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u">
+      &#128190; TẢI FILE .M3U CHO COREPLAYER (KHÔNG LỖI BOM)
+    </a>
+
+    <a class="btn" style="background:#0369a1;border:1px solid #0284c7;color:#fff;display:block;margin:6px auto;width:85%;padding:8px 10px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/live.ts">
+      &#9654; MỞ LUỒNG MPEG-TS (.TS) TRỰC TIẾP
+    </a>
+
+    <a class="btn" style="background:#ea580c;border:1px solid #f97316;color:#fff;display:block;margin:6px auto;width:85%;padding:8px 10px;text-decoration:none;font-weight:bold;" href="/open/${encodeURIComponent(channel.id)}?player=vlc">
+      &#9654; XEM TRÊN VLC PLAYER (CHO ĐIỆN THOẠI)
     </a>
 
     <a class="btn-stream" href="${escapeHtml(directStreamUrl)}">
-      &#9654; MỞ STREAM TRỰC TIẾP (HTTP)
+      &#9654; MỞ STREAM GỐC (HTTP)
     </a>
 
     <div style="margin: 8px 0;">
@@ -400,19 +408,16 @@ ${LEGACY_CSS}
   </div>
 
   <div class="box">
-    <strong>URL STREAM (Nhấn giữ để copy):</strong>
-    <div class="url-box">${escapeHtml(directStreamUrl)}</div>
-    <textarea rows="2" style="width:96%;font-size:11px;background:#111;color:#0f6;border:1px solid #444;" readonly="readonly">${escapeHtml(directStreamUrl)}</textarea>
+    <strong>URL MPEG-TS CHO COREPLAYER (Nhấn giữ để copy):</strong>
+    <div class="url-box">/api/channel/${encodeURIComponent(channel.id)}/live.ts</div>
+    <textarea rows="2" style="width:96%;font-size:11px;background:#111;color:#0f6;border:1px solid #444;" readonly="readonly">/api/channel/${encodeURIComponent(channel.id)}/live.ts</textarea>
   </div>
 
   <div class="box">
-    <strong>HƯỚNG DẪN XEM TRÊN NOKIA E72:</strong>
-    <div class="guide-step"><b>Cách 1:</b> Nhấn nút <b>[ MỞ BẰNG COREPLAYER ]</b> ở trên. Nếu điện thoại hỏi ứng dụng, chọn CorePlayer.</div>
-    <div class="guide-step"><b>Cách 2 (Thủ công chuẩn nhất):</b></div>
-    <div class="guide-step">1. Nhấn giữ hoặc bôi đen URL màu xanh lá cây ở trên rồi bấm <b>Copy (Sao chép)</b>.</div>
-    <div class="guide-step">2. Khởi động ứng dụng <b>CorePlayer</b> trên Nokia E72.</div>
-    <div class="guide-step">3. Chọn <b>Menu &gt; Open URL... (Mở URL)</b>.</div>
-    <div class="guide-step">4. Dán (Paste) URL đã copy và bấm <b>OK / Play</b>.</div>
+    <strong style="color:#f59e0b;">XỬ LÝ LỖI COREPLAYER KHÔNG MỞ ĐƯỢC:</strong>
+    <div class="guide-step">&#8226; <b>Nguyên nhân:</b> CorePlayer không hỗ trợ định dạng HLS (.m3u8) hiện đại và bị lỗi cú pháp nếu tệp .m3u chứa mã BOM.</div>
+    <div class="guide-step">&#8226; <b>Cách sửa:</b> Nhấn nút <b>[ TẢI FILE .M3U CHO COREPLAYER ]</b> ở trên (đã loại bỏ mã BOM và nối trực tiếp luồng MPEG-TS .ts).</div>
+    <div class="guide-step">&#8226; <b>Khuyên dùng trên điện thoại:</b> Nếu dùng điện thoại Android hoặc iPhone, hãy tải ứng dụng <b>VLC for Mobile</b> và nhấn <b>[ XEM TRÊN VLC PLAYER ]</b> để xem mượt nhất!</div>
   </div>
 
   <div class="box">

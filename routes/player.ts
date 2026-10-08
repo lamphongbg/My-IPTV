@@ -155,38 +155,71 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
     return;
   }
 
-  // Nokia E72 / Legacy CorePlayer Flow
+  // Nokia E72 / Mobile CorePlayer Flow
+  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+  const host = req.get('host') || '127.0.0.1:3000';
   const targetCorePlayerM3u = `/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u`;
+  const liveTsUrl = `/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
+  const absoluteLiveTsUrl = `${proto}://${host}${liveTsUrl}`;
   const corePlayerSchemeUrl = `coreplayer://${streamUrl}`;
+  const vlcLaunchUrl = `/open/${encodeURIComponent(channel.id)}?player=vlc`;
 
-  // Serve XHTML strictly compatible with Nokia BrowserNG and CorePlayer
+  // Serve XHTML strictly compatible with Nokia BrowserNG, Mobile Browsers and CorePlayer
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <meta http-equiv="refresh" content="0;url=${escapeHtml(targetCorePlayerM3u)}" />
-  <title>Mở ${escapeHtml(channel.name)} trên CorePlayer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Mở ${escapeHtml(channel.name)} trên CorePlayer / Thiết bị</title>
   <style type="text/css">
-    body { background-color: #1a1a1a; color: #fff; font-family: Arial, sans-serif; text-align: center; padding: 15px; font-size: 13px; }
-    .btn { display: inline-block; padding: 10px 14px; background-color: #b33939; color: #fff; text-decoration: none; font-weight: bold; margin: 6px 0; border: 1px solid #ff5252; width: 85%; }
-    .btn-green { background-color: #1e7e34; border-color: #28a745; }
-    .url { background: #000; color: #00ff66; padding: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin: 10px 0; }
-    .note { color: #f4d35e; font-size: 11px; margin: 8px 0; }
+    body { background-color: #12141a; color: #f3f4f6; font-family: Arial, sans-serif; text-align: center; padding: 16px 12px; font-size: 13px; line-height: 1.5; }
+    .card { max-width: 480px; margin: 0 auto; background: #1c202a; border: 1px solid #2e3547; border-radius: 12px; padding: 18px 14px; text-align: left; }
+    h3 { margin: 4px 0 8px 0; color: #f4d35e; text-align: center; font-size: 16px; }
+    .ch-name { font-weight: bold; text-align: center; font-size: 15px; color: #fff; margin-bottom: 12px; }
+    .btn { display: block; padding: 11px 14px; border-radius: 8px; text-decoration: none; font-weight: bold; margin: 8px 0; text-align: center; font-size: 13px; box-sizing: border-box; }
+    .btn-green { background-color: #1e7e34; color: #fff !important; border: 1px solid #28a745; }
+    .btn-ts { background-color: #0369a1; color: #fff !important; border: 1px solid #0284c7; }
+    .btn-vlc { background-color: #ea580c; color: #fff !important; border: 1px solid #f97316; }
+    .btn-gray { background-color: #374151; color: #e5e7eb !important; border: 1px solid #4b5563; font-size: 12px; }
+    .url { background: #0b0c10; color: #00ff66; padding: 8px 10px; font-family: monospace; font-size: 11px; word-break: break-all; margin: 8px 0; border: 1px solid #22c55e44; border-radius: 6px; }
+    .notice-box { background: #1a2233; border: 1px solid #2a4365; border-radius: 8px; padding: 10px; margin: 12px 0; font-size: 12px; color: #cbd5e1; }
+    .notice-title { color: #f59e0b; font-weight: bold; margin-bottom: 4px; }
+    .footer-link { color: #9ca3af; text-decoration: none; font-size: 12px; display: block; text-align: center; margin-top: 14px; }
   </style>
 </head>
 <body>
-  <h3>ĐANG KẾT NỐI COREPLAYER S60...</h3>
-  <p><strong>${escapeHtml(channel.name)}</strong></p>
-  <div class="note">Nokia E72 đang tự động tải và khởi chạy CorePlayer...</div>
+  <div class="card">
+    <h3>KẾT NỐI PHÁT KÊNH TRÊN ĐIỆN THOẠI</h3>
+    <div class="ch-name">${escapeHtml(channel.name)}</div>
 
-  <p><a class="btn btn-green" href="${escapeHtml(targetCorePlayerM3u)}">&#9654; TỰ ĐỘNG KHỞI CHẠY COREPLAYER</a></p>
-  <p><a class="btn" href="${escapeHtml(corePlayerSchemeUrl)}">&#9654; MỞ QUA SCHEME COREPLAYER://</a></p>
-  <p><a class="btn" style="background:#444;border-color:#666;" href="${escapeHtml(streamUrl)}">&#9654; MỞ STREAM HTTP TRỰC TIẾP</a></p>
+    <!-- Khuyến nghị hàng đầu nếu dùng smartphone -->
+    <a class="btn btn-vlc" href="${escapeHtml(vlcLaunchUrl)}">&#9654; XEM TRÊN VLC PLAYER (KHUYẾN NGHỊ CHO ĐIỆN THOẠI)</a>
 
-  <p style="font-size:11px;">Hoặc copy URL sau dán vào CorePlayer &gt; Open URL:</p>
-  <div class="url">${escapeHtml(streamUrl)}</div>
-  <p><a href="/legacy/channel/${encodeURIComponent(channel.id)}" style="color:#4da6ff;">&laquo; Quay lại thông tin kênh</a></p>
+    <!-- Tải M3U và phát MPEG-TS cho CorePlayer -->
+    <a class="btn btn-green" href="${escapeHtml(targetCorePlayerM3u)}">&#128190; TẢI FILE .M3U CHUẨN CHO COREPLAYER (KHÔNG LỖI BOM)</a>
+    <a class="btn btn-ts" href="${escapeHtml(liveTsUrl)}">&#9654; MỞ LUỒNG MPEG-TS TRỰC TIẾP (.TS) CHO COREPLAYER</a>
+
+    <div class="notice-box">
+      <div class="notice-title">&#9888; Khắc phục lỗi "CorePlayer báo lỗi không mở được":</div>
+      <div>
+        1. <strong>Nguyên nhân:</strong> CorePlayer (phần mềm từ thời Symbian S60) mặc định không đọc được luồng HLS (.m3u8) hiện đại và bị lỗi cú pháp nếu tệp có chứa mã BOM.<br />
+        2. <strong>Cách khắc phục:</strong><br />
+        &bull; <strong>Trên điện thoại Android / iPhone:</strong> Khuyến nghị dùng <strong>VLC Media Player</strong> (bấm nút màu cam ở trên) để xem mượt mà 100%.<br />
+        &bull; <strong>Trên Nokia E72 / CorePlayer:</strong> Bấm nút <strong>"Tải file .M3U chuẩn cho CorePlayer"</strong> (hệ thống đã loại bỏ mã BOM và chuyển sang luồng MPEG-TS .ts tương thích tối đa với CorePlayer).
+      </div>
+    </div>
+
+    <div style="font-size:11px;color:#9ca3af;margin-top:10px;">Hoặc copy URL MPEG-TS dán vào CorePlayer &gt; Menu &gt; Open URL:</div>
+    <div class="url">${escapeHtml(absoluteLiveTsUrl)}</div>
+
+    <div style="font-size:11px;color:#9ca3af;margin-top:6px;">URL luồng gốc:</div>
+    <div class="url" style="color:#38bdf8;border-color:#0284c744;">${escapeHtml(streamUrl)}</div>
+
+    <a class="btn btn-gray" href="${escapeHtml(corePlayerSchemeUrl)}">Mở qua Scheme coreplayer://</a>
+    <a class="footer-link" href="/legacy/channel/${encodeURIComponent(channel.id)}">&laquo; Quay lại thông tin kênh</a>
+    <a class="footer-link" href="/">&laquo; Quay lại giao diện chính</a>
+  </div>
 </body>
 </html>`);
 });

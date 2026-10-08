@@ -148,6 +148,19 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
               </a>
 
               <a
+                href={`/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u`}
+                download={`${channel.name}_coreplayer.m3u`}
+                className="p-2.5 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-800/50 text-rose-200 rounded-lg font-medium flex items-center justify-between transition"
+                title="Tải file .m3u tối ưu riêng cho CorePlayer (loại bỏ lỗi BOM, luồng MPEG-TS)"
+              >
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-rose-400" />
+                  <span>Tải .M3U CorePlayer (Đã sửa lỗi)</span>
+                </div>
+                <Download className="w-3.5 h-3.5 opacity-70" />
+              </a>
+
+              <a
                 href={`potplayer://${channel.stream_url}`}
                 className="p-2.5 bg-yellow-950/40 hover:bg-yellow-900/50 border border-yellow-800/50 text-yellow-200 rounded-lg font-medium flex items-center justify-between transition"
               >
@@ -181,10 +194,9 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
                 <span>Hướng dẫn xem trên Nokia E72 (Symbian S60)</span>
               </div>
               <ol className="list-decimal list-inside space-y-1 text-neutral-300 text-[11px] leading-relaxed">
-                <li>Mở trình duyệt mặc định trên Nokia E72, truy cập trang web (hệ thống sẽ tự nhận diện E72).</li>
-                <li>Chọn kênh và bấm <strong className="text-white">[ Mở CorePlayer ]</strong> hoặc copy URL trên.</li>
-                <li>Trong <strong>CorePlayer</strong>: Bấm <strong>Menu &gt; Open URL...</strong></li>
-                <li>Dán (Paste) đường dẫn stream và bấm <strong>OK</strong> để phát.</li>
+                <li>Mở trình duyệt trên Nokia E72, truy cập trang web (hệ thống tự nhận diện E72).</li>
+                <li>Bấm nút <strong>[ Tải .M3U CorePlayer (Đã sửa lỗi) ]</strong> để nhận file .m3u không bị lỗi BOM.</li>
+                <li>Hoặc trong <strong>CorePlayer</strong>: Chọn <strong>Menu &gt; Open URL...</strong> &rarr; Dán link MPEG-TS: <code className="text-emerald-400">{`/api/channel/${channel.id}/live.ts`}</code></li>
               </ol>
             </div>
           ) : (
@@ -196,7 +208,7 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
               >
                 <div className="flex items-center gap-2 text-neutral-300 font-medium">
                   <Smartphone className="w-3.5 h-3.5 text-neutral-400" />
-                  <span>Dành cho Nokia E72 (Symbian S60 / CorePlayer)</span>
+                  <span>Xử lý lỗi CorePlayer &amp; Xem trên điện thoại</span>
                 </div>
                 <div className="flex items-center gap-1 text-[11px] text-amber-400">
                   <span>{showNokiaGuide ? 'Ẩn' : 'Xem hướng dẫn'}</span>
@@ -205,15 +217,13 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
               </button>
 
               {showNokiaGuide && (
-                <div className="px-3.5 pb-3.5 pt-1 space-y-2 text-xs border-t border-neutral-800/60 bg-neutral-950">
-                  <p className="text-[11px] text-neutral-400">
-                    Để kích hoạt giao diện siêu nhẹ và nút CorePlayer trực tiếp trên Nokia E72, hãy truy cập <a href="/legacy" className="text-amber-400 underline">bản Nokia E72 (/legacy)</a>.
-                  </p>
-                  <ol className="list-decimal list-inside space-y-1 text-neutral-300 text-[11px] leading-relaxed">
-                    <li>Trên Nokia E72: Khởi động <strong>CorePlayer</strong>.</li>
-                    <li>Chọn <strong>Menu &gt; Open URL...</strong></li>
-                    <li>Dán stream URL: <code className="text-emerald-400">{channel.stream_url}</code></li>
-                  </ol>
+                <div className="px-3.5 pb-3.5 pt-1 space-y-2.5 text-xs border-t border-neutral-800/60 bg-neutral-950">
+                  <div className="p-2.5 bg-amber-950/30 border border-amber-800/40 rounded-lg text-amber-200 text-[11px] leading-relaxed">
+                    <p className="font-semibold text-amber-300 mb-1">💡 Tại sao CorePlayer trên điện thoại báo không mở được file?</p>
+                    <p>• <strong>Nguyên nhân:</strong> CorePlayer (phần mềm cũ từ Symbian S60) không hỗ trợ định dạng HLS (.m3u8) hiện đại và bị lỗi khi file .m3u có mã BOM UTF-8.</p>
+                    <p className="mt-1">• <strong>Khuyên dùng cho điện thoại (Android / iOS):</strong> Sử dụng <strong>VLC Media Player</strong> (bấm nút <em>"Xem trên VLC player"</em> ở trên). VLC hỗ trợ 100% các luồng trực tiếp mà không cần cấu hình.</p>
+                    <p className="mt-1">• <strong>Nếu vẫn muốn dùng CorePlayer:</strong> Bấm nút <em>"Tải .M3U CorePlayer (Đã sửa lỗi)"</em> ở trên để nhận file chuẩn định dạng luồng MPEG-TS.</p>
+                  </div>
                 </div>
               )}
             </div>

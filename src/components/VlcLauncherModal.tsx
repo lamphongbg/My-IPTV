@@ -184,11 +184,26 @@ export const VlcLauncherModal: React.FC<VlcLauncherModalProps> = ({ channel, isO
               <div className="p-2.5 bg-neutral-900/80 rounded-lg border border-neutral-800 space-y-1">
                 <div className="font-semibold text-neutral-100 flex items-center gap-1.5">
                   <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>3. Cách nhanh nhất không cần tải file (3 giây):</span>
+                  <span>3. Cách nhanh nhất không cần tải file:</span>
                 </div>
                 <p className="text-[11px] text-neutral-300 leading-relaxed">
-                  Bấm nút <strong>Sao chép link stream</strong> ở trên &rarr; Mở ứng dụng VLC trên máy &rarr; Nhấn tổ hợp phím <strong>Ctrl + N</strong> &rarr; Dán link và bấm <strong>Play (Phát)</strong>!
+                  Bấm nút <strong>Sao chép link stream</strong> ở trên &rarr; Mở ứng dụng VLC trên máy/điện thoại &rarr; Mở luồng mạng (Ctrl + N trên máy tính hoặc Menu &gt; Luồng mạng trên điện thoại) &rarr; Dán link và bấm <strong>Play (Phát)</strong>!
                 </p>
+              </div>
+
+              {/* Notice 4: CorePlayer on mobile phones */}
+              <div className="p-2.5 bg-neutral-900/80 rounded-lg border border-neutral-800 space-y-1">
+                <div className="font-semibold text-neutral-100 flex items-center gap-1.5">
+                  <Monitor className="w-3.5 h-3.5 text-amber-400" />
+                  <span>4. Trên điện thoại: CorePlayer báo lỗi không mở được file:</span>
+                </div>
+                <p className="text-[11px] text-neutral-400 leading-relaxed">
+                  CorePlayer là ứng dụng cũ không đọc được trực tiếp luồng HLS (.m3u8).
+                </p>
+                <div className="text-[11px] text-amber-200/90 space-y-0.5 bg-amber-950/30 p-2 rounded border border-amber-900/30">
+                  <p>&bull; <strong>Khuyên dùng:</strong> Cài đặt <strong>VLC Media Player</strong> cho Android hoặc iPhone, sau đó chọn mở file bằng VLC.</p>
+                  <p>&bull; Hoặc tải file M3U qua nút <strong>Tải .M3U CorePlayer</strong> trong bảng chi tiết kênh (đã chuyển mã sang MPEG-TS).</p>
+                </div>
               </div>
             </div>
           )}
