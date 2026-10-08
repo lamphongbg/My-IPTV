@@ -164,7 +164,8 @@ async function handleLegacyChannel(req: Request, res: Response) {
   }
 
   const host = (req.query.host as string) || (req.query.ip as string) || '';
-  const html = renderLegacyChannel(channel, host);
+  const resChoice = (req.query.res as string) || '240p';
+  const html = renderLegacyChannel(channel, host, resChoice);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
 }

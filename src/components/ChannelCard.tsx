@@ -1,15 +1,17 @@
 import React from 'react';
 import { Channel } from '../types/iptv';
 import { isNokiaLightweightBrowser, getVlcLaunchUrl, launchVlcPlayer } from '../utils/deviceHelper';
-import { Play, Star, Info, Smartphone } from 'lucide-react';
+import { Play, Star, Info, Smartphone, Bell } from 'lucide-react';
 
 interface ChannelCardProps {
   channel: Channel;
   isActive: boolean;
   isFavorite: boolean;
+  isReminded?: boolean;
   onSelect: (channel: Channel) => void;
   onPlay?: (channel: Channel, e: React.MouseEvent) => void;
   onToggleFavorite: (channelId: string, e: React.MouseEvent) => void;
+  onToggleReminder?: (channel: Channel, e: React.MouseEvent) => void;
   onOpenDetails: (channel: Channel, e: React.MouseEvent) => void;
   isNokiaLightweight?: boolean;
 }
@@ -18,9 +20,11 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
   channel,
   isActive,
   isFavorite,
+  isReminded = false,
   onSelect,
   onPlay,
   onToggleFavorite,
+  onToggleReminder,
   onOpenDetails,
   isNokiaLightweight,
 }) => {
@@ -54,7 +58,7 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
         </div>
 
         {/* Info */}
-        <div className="flex-1 min-w-0 pr-6">
+        <div className="flex-1 min-w-0 pr-14">
           <h3 className={`text-sm font-semibold truncate leading-tight ${isActive ? 'text-amber-400' : 'text-neutral-200'}`}>
             {channel.name}
           </h3>
@@ -65,20 +69,54 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
             <span className="text-[10px] text-neutral-400">
               {channel.resolution || 'HD'}
             </span>
+            {isReminded && (
+              <span className="text-[9px] text-amber-400 font-bold bg-amber-500/20 px-1 py-0.2 rounded flex items-center gap-0.5" title="Đang bật thông báo nhắc nhở">
+                <Bell className="w-2.5 h-2.5 fill-current" />
+                <span>Nhắc nhở</span>
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Favorite Button */}
-        <button
-          type="button"
-          onClick={(e) => onToggleFavorite(channel.id, e)}
-          className="absolute top-3 right-3 text-neutral-500 hover:text-amber-400 transition p-1"
-          title={isFavorite ? 'Bỏ yêu thích' : 'Thêm vào yêu thích'}
-        >
-          <Star
-            className={`w-4 h-4 ${isFavorite ? 'fill-amber-400 text-amber-400' : 'text-neutral-500'}`}
-          />
-        </button>
+        {/* Top Action Icons: Bell Reminder & Star Favorite */}
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-0.5">
+          {/* Bell Icon Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleReminder?.(channel, e);
+            }}
+            className={`p-1.5 rounded-lg transition ${
+              isReminded
+                ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
+                : 'text-neutral-500 hover:text-amber-400 hover:bg-neutral-800'
+            }`}
+            title={
+              isReminded
+                ? `Đang bật thông báo cho "${channel.name}" & danh mục "${channel.group}" (Nhấn để tắt)`
+                : `Bật nhắc nhở khi có kênh mới trong danh mục "${channel.group}"`
+            }
+            aria-label={isReminded ? 'Tắt nhắc nhở kênh' : 'Bật nhắc nhở kênh'}
+          >
+            <Bell
+              className={`w-4 h-4 ${isReminded ? 'fill-amber-400 text-amber-400 animate-pulse' : 'text-neutral-500'}`}
+            />
+          </button>
+
+          {/* Favorite Button */}
+          <button
+            type="button"
+            onClick={(e) => onToggleFavorite(channel.id, e)}
+            className="p-1.5 text-neutral-500 hover:text-amber-400 rounded-lg hover:bg-neutral-800 transition"
+            title={isFavorite ? 'Bỏ yêu thích' : 'Thêm vào yêu thích'}
+            aria-label={isFavorite ? 'Bỏ yêu thích' : 'Thêm vào yêu thích'}
+          >
+            <Star
+              className={`w-4 h-4 ${isFavorite ? 'fill-amber-400 text-amber-400' : 'text-neutral-500'}`}
+            />
+          </button>
+        </div>
       </div>
 
       {/* Bottom Bar: Action buttons */}

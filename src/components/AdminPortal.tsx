@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Playlist, Channel, StreamTestResult, AdminStats } from '../types/iptv';
 import { VideoPlayer } from './VideoPlayer';
+import { notifyNewChannelAdded } from '../utils/reminderManager';
 import {
   Shield,
   Layers,
@@ -298,6 +299,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
           body: JSON.stringify(channelForm),
         });
         if (!res.ok) throw new Error('Thêm kênh mới thất bại');
+        const createdChannel = await res.json().catch(() => null);
+        if (createdChannel) {
+          notifyNewChannelAdded(createdChannel);
+        } else {
+          notifyNewChannelAdded({ name: channelForm.name, group: channelForm.group || 'Chung' });
+        }
         showNotification(`Đã thêm kênh mới "${channelForm.name}"`);
       }
 

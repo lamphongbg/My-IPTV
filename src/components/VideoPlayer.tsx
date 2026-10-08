@@ -16,8 +16,19 @@ import {
   ShieldCheck,
   Zap,
   Download,
-  Smartphone
+  Smartphone,
+  Sliders,
+  Check
 } from 'lucide-react';
+
+interface HlsQualityLevel {
+  index: number;
+  height: number;
+  width: number;
+  bitrate: number;
+  label: string;
+  isSmoothPreset?: boolean;
+}
 
 interface VideoPlayerProps {
   channel: Channel | null;
@@ -47,6 +58,43 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [feedbackIcon, setFeedbackIcon] = useState<'play' | 'pause' | null>(null);
   const [isVlcModalOpen, setIsVlcModalOpen] = useState<boolean>(false);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Resolution selection states
+  const [hlsLevels, setHlsLevels] = useState<HlsQualityLevel[]>([]);
+  const [currentLevelIndex, setCurrentLevelIndex] = useState<number>(-1); // -1 = Auto
+  const [activeResolutionLabel, setActiveResolutionLabel] = useState<string>('Tự động');
+  const [isResolutionMenuOpen, setIsResolutionMenuOpen] = useState<boolean>(false);
+  const [resolutionNotice, setResolutionNotice] = useState<string | null>(null);
+  const resolutionMenuRef = useRef<HTMLDivElement>(null);
+  const resolutionNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Click outside to close resolution menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        resolutionMenuRef.current &&
+        !resolutionMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsResolutionMenuOpen(false);
+      }
+    };
+    if (isResolutionMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isResolutionMenuOpen]);
+
+  const showResolutionNotice = useCallback((text: string) => {
+    if (resolutionNoticeTimerRef.current) {
+      clearTimeout(resolutionNoticeTimerRef.current);
+    }
+    setResolutionNotice(text);
+    resolutionNoticeTimerRef.current = setTimeout(() => {
+      setResolutionNotice(null);
+    }, 2200);
+  }, []);
 
   const triggerFeedback = useCallback((type: 'play' | 'pause') => {
     if (feedbackTimerRef.current) {
@@ -143,6 +191,55 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setIsLoading(false);
+
+          if (hls.levels && hls.levels.length > 0) {
+            const parsed: HlsQualityLevel[] = hls.levels.map((lvl, idx) => {
+              const h = lvl.height || 0;
+              const w = lvl.width || 0;
+              let label = h > 0 ? `${h}p` : `Mức ${idx + 1}`;
+              if (h >= 1080) label = `${h}p Full HD`;
+              else if (h >= 720) label = `${h}p HD`;
+              else if (h >= 480) label = `${h}p SD`;
+              else if (h >= 360) label = `${h}p (Mượt mà)`;
+              else if (h > 0 && h <= 240) label = `${h}p (Siêu nhẹ)`;
+
+              return {
+                index: idx,
+                height: h,
+                width: w,
+                bitrate: lvl.bitrate || 0,
+                label,
+                isSmoothPreset: h > 0 && h <= 480,
+              };
+            });
+
+            // Sort by height descending
+            parsed.sort((a, b) => (b.height || 0) - (a.height || 0));
+            setHlsLevels(parsed);
+
+            // Restore saved user resolution preference if available
+            const savedRes = typeof window !== 'undefined' ? localStorage.getItem('iptv_preferred_resolution') : null;
+            if (savedRes && savedRes !== 'auto') {
+              const targetHeight = parseInt(savedRes, 10);
+              const matched = parsed.find((p) => p.height === targetHeight);
+              if (matched) {
+                hls.currentLevel = matched.index;
+                setCurrentLevelIndex(matched.index);
+                setActiveResolutionLabel(matched.label);
+              } else {
+                setCurrentLevelIndex(-1);
+                setActiveResolutionLabel('Tự động');
+              }
+            } else {
+              setCurrentLevelIndex(-1);
+              setActiveResolutionLabel('Tự động');
+            }
+          } else {
+            setHlsLevels([]);
+            setCurrentLevelIndex(-1);
+            setActiveResolutionLabel('Tự động');
+          }
+
           video
             .play()
             .then(() => {
@@ -167,6 +264,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   }
                 });
             });
+        });
+
+        hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+          if (hls.currentLevel === -1 && hls.levels && hls.levels[data.level]) {
+            const activeLevel = hls.levels[data.level];
+            const h = activeLevel.height;
+            if (h) {
+              setActiveResolutionLabel(`Tự động (${h}p)`);
+            }
+          }
         });
 
         hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -444,6 +551,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setTimeout(() => setCopied(false), 2000);
   }, [channel]);
 
+  const handleSelectLevel = useCallback(
+    (levelIndex: number, label: string) => {
+      if (!hlsRef.current) return;
+      const hls = hlsRef.current;
+      hls.currentLevel = levelIndex;
+      setCurrentLevelIndex(levelIndex);
+      setIsResolutionMenuOpen(false);
+
+      if (levelIndex === -1) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('iptv_preferred_resolution', 'auto');
+        }
+        setActiveResolutionLabel('Tự động');
+        showResolutionNotice('⚡ Đã bật Tự động điều chỉnh theo tốc độ mạng');
+      } else {
+        const selected = hlsLevels.find((l) => l.index === levelIndex);
+        if (selected && selected.height) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('iptv_preferred_resolution', `${selected.height}`);
+          }
+        }
+        setActiveResolutionLabel(label);
+        showResolutionNotice(`✓ Đã chọn ${label} • Tải nhanh & xem mượt mà`);
+      }
+    },
+    [hlsLevels, showResolutionNotice]
+  );
+
   const handleToggleFullscreen = useCallback(() => {
     const container = playerContainerRef.current || videoRef.current;
     if (!container) return;
@@ -586,6 +721,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <VolumeX className="w-4 h-4" />
             <span>Đang phát tắt tiếng. Bấm vào đây để BẬT TIẾNG!</span>
           </button>
+        )}
+
+        {/* On-screen Resolution Change Toast Notice */}
+        {resolutionNotice && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-neutral-900/95 text-amber-300 px-4 py-2 rounded-full font-bold text-xs flex items-center gap-2 shadow-2xl border border-amber-500/50 pointer-events-none animate-pulse">
+            <Sliders className="w-3.5 h-3.5 text-sky-400" />
+            <span>{resolutionNotice}</span>
+          </div>
+        )}
+
+        {/* Active Resolution Pill (Top Left) */}
+        {isPlaying && !isLoading && (
+          <div className="absolute top-3 left-3 z-20 pointer-events-none">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide bg-black/60 text-neutral-300 border border-neutral-700/60 backdrop-blur-sm flex items-center gap-1 shadow">
+              <Sliders className="w-2.5 h-2.5 text-sky-400" />
+              <span>{activeResolutionLabel}</span>
+            </span>
+          </div>
         )}
 
         {/* Loading Overlay */}
@@ -742,6 +895,128 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <Zap className={`w-3.5 h-3.5 ${useProxy ? 'text-emerald-400' : ''}`} />
             <span>Proxy: {useProxy ? 'BẬT' : 'TẮT'}</span>
           </button>
+
+          {/* Resolution / Quality Selector */}
+          <div className="relative" ref={resolutionMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsResolutionMenuOpen(!isResolutionMenuOpen)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition border ${
+                isResolutionMenuOpen
+                  ? 'bg-sky-950/80 text-sky-200 border-sky-600'
+                  : currentLevelIndex >= 0 && (hlsLevels.find((l) => l.index === currentLevelIndex)?.height || 0) <= 480
+                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/60'
+                  : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white'
+              }`}
+              title="Tùy chọn độ phân giải: Giảm độ phân giải (360p/240p) để tăng tốc độ tải và xem mượt mà hơn khi mạng yếu"
+            >
+              <Sliders className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden sm:inline">Độ phân giải:</span>
+              <span className="max-w-[105px] truncate font-bold text-amber-300">{activeResolutionLabel}</span>
+              {currentLevelIndex >= 0 && (hlsLevels.find((l) => l.index === currentLevelIndex)?.height || 0) <= 480 && (
+                <span className="px-1 py-0.2 rounded text-[9px] bg-emerald-500/20 text-emerald-400 font-bold hidden md:inline">
+                  ⚡ MƯỢT
+                </span>
+              )}
+            </button>
+
+            {/* Resolution Dropdown Popup */}
+            {isResolutionMenuOpen && (
+              <div className="absolute bottom-full right-0 mb-2 w-72 sm:w-80 bg-neutral-950/95 backdrop-blur-md border border-neutral-800 rounded-xl shadow-2xl p-3 z-50 text-xs">
+                <div className="flex items-center justify-between pb-2 mb-2 border-b border-neutral-800">
+                  <div className="flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-sky-400" />
+                    <span className="font-bold text-neutral-100">Tùy chọn độ phân giải</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsResolutionMenuOpen(false)}
+                    className="text-neutral-400 hover:text-white p-0.5 text-sm"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-neutral-400 mb-2.5 leading-relaxed bg-neutral-900/80 p-2 rounded-lg border border-neutral-800/60">
+                  💡 <strong>Mẹo xem mượt:</strong> Chọn độ phân giải <strong>360p</strong> hoặc <strong>480p</strong> giúp video tải nhanh hơn tức thì, giảm giật lag và tiết kiệm 70% băng thông mạng khi mạng yếu.
+                </p>
+
+                <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+                  {/* Option: Auto */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectLevel(-1, 'Tự động')}
+                    className={`w-full p-2 rounded-lg flex items-center justify-between transition text-left ${
+                      currentLevelIndex === -1
+                        ? 'bg-sky-950/70 border border-sky-600/70 text-sky-200'
+                        : 'hover:bg-neutral-900 text-neutral-300'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-semibold text-xs flex items-center gap-1.5">
+                        <span>⚡ Tự động (HLS Adaptive)</span>
+                        <span className="text-[10px] px-1.5 py-0.2 bg-neutral-800 text-neutral-400 rounded">Khuyên dùng</span>
+                      </div>
+                      <div className="text-[10px] text-neutral-400 mt-0.5">
+                        Tự động điều chỉnh chất lượng theo tốc độ đường truyền
+                      </div>
+                    </div>
+                    {currentLevelIndex === -1 && <Check className="w-4 h-4 text-sky-400 flex-shrink-0" />}
+                  </button>
+
+                  {/* Detected Quality Levels */}
+                  {hlsLevels.length > 0 ? (
+                    hlsLevels.map((lvl) => {
+                      const isSelected = currentLevelIndex === lvl.index;
+                      return (
+                        <button
+                          key={lvl.index}
+                          type="button"
+                          onClick={() => handleSelectLevel(lvl.index, lvl.label)}
+                          className={`w-full p-2 rounded-lg flex items-center justify-between transition text-left ${
+                            isSelected
+                              ? 'bg-amber-950/70 border border-amber-600/70 text-amber-200'
+                              : 'hover:bg-neutral-900 text-neutral-300'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-semibold text-xs flex items-center gap-1.5">
+                              <span>{lvl.label}</span>
+                              {lvl.isSmoothPreset && (
+                                <span className="text-[10px] px-1.5 py-0.2 bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 rounded font-medium">
+                                  ⚡ Tải nhanh / Siêu mượt
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-neutral-400 mt-0.5">
+                              {lvl.width && lvl.height ? `${lvl.width}x${lvl.height}` : ''}
+                              {lvl.bitrate ? ` • ${(lvl.bitrate / 1000).toFixed(0)} kbps` : ''}
+                            </div>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-amber-400 flex-shrink-0" />}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="p-2 text-neutral-400 text-[11px] bg-neutral-900/50 rounded-lg">
+                      Luồng phát này cung cấp một mức chất lượng cố định từ nguồn đài. Trên điện thoại hoặc mạng yếu, bạn có thể tải M3U hoặc mở CorePlayer để chọn chuyển mã 180p/240p/360p.
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-2.5 pt-2 border-t border-neutral-800 flex items-center justify-between text-[11px] text-neutral-400">
+                  <span>Chế độ: <strong className="text-amber-300">{activeResolutionLabel}</strong></span>
+                  <a
+                    href={`/open/${channel.id}`}
+                    className="text-amber-400 hover:underline flex items-center gap-1"
+                  >
+                    <span>Cấu hình E72/VLC</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
 
           <button
             type="button"

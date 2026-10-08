@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Channel } from '../types/iptv';
 import { isNokiaLightweightBrowser, getVlcLaunchUrl, launchVlcPlayer } from '../utils/deviceHelper';
-import { X, Copy, Check, ExternalLink, Play, Tv, ShieldCheck, Smartphone, Download, ChevronRight } from 'lucide-react';
+import { X, Copy, Check, ExternalLink, Play, Tv, ShieldCheck, Smartphone, Download, ChevronRight, Sliders, Zap } from 'lucide-react';
 
 interface ChannelDetailsModalProps {
   channel: Channel | null;
@@ -185,16 +185,50 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
               </a>
 
               <a
-                href={`/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u`}
-                download={`${channel.name}_coreplayer.m3u`}
+                href={`/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u?res=240p`}
+                download={`${channel.name}_240p_e72.m3u`}
                 className="p-2.5 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-800/50 text-rose-200 rounded-lg font-medium flex items-center justify-between transition"
-                title="Tải file .m3u tối ưu riêng cho CorePlayer (loại bỏ lỗi BOM, luồng MPEG-TS)"
+                title="Tải file .m3u 240p QVGA chuẩn Nokia E72 (loại bỏ lỗi BOM, luồng thuần HTTP)"
               >
                 <div className="flex items-center gap-2">
                   <Smartphone className="w-4 h-4 text-rose-400" />
-                  <span>Tải .M3U CorePlayer (Đã sửa lỗi)</span>
+                  <div>
+                    <span>Tải .M3U CorePlayer (240p QVGA)</span>
+                    <div className="text-[10px] text-rose-300/80 font-normal">Chuẩn màn hình E72 • CPU chạy mát</div>
+                  </div>
                 </div>
                 <Download className="w-3.5 h-3.5 opacity-70" />
+              </a>
+
+              <a
+                href={`/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u?res=180p`}
+                download={`${channel.name}_180p_light.m3u`}
+                className="p-2.5 bg-sky-950/40 hover:bg-sky-900/50 border border-sky-800/50 text-sky-200 rounded-lg font-medium flex items-center justify-between transition"
+                title="Tải file .m3u 180p siêu nhẹ (tải tức thì trên sóng 2G/3G hoặc mạng yếu)"
+              >
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-sky-400" />
+                  <div>
+                    <span>Tải .M3U 180p (⚡ Siêu nhẹ)</span>
+                    <div className="text-[10px] text-sky-300/80 font-normal">Tải tức thì • Mạng yếu 2G/3G không giật</div>
+                  </div>
+                </div>
+                <Download className="w-3.5 h-3.5 opacity-70" />
+              </a>
+
+              <a
+                href={`/open/${encodeURIComponent(channel.id)}`}
+                className="p-2.5 bg-amber-950/40 hover:bg-amber-900/50 border border-amber-800/50 text-amber-200 rounded-lg font-medium flex items-center justify-between transition"
+                title="Mở trang tùy chọn độ phân giải và liên kết trực tiếp"
+              >
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-amber-400" />
+                  <div>
+                    <span>Tùy chọn độ phân giải &amp; Mở URL</span>
+                    <div className="text-[10px] text-amber-300/80 font-normal">180p, 240p QVGA, 360p, Luồng gốc</div>
+                  </div>
+                </div>
+                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
               </a>
 
               <a

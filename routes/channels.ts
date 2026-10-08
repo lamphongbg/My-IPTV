@@ -211,41 +211,79 @@ router.get(
       res.setHeader('Connection', 'close');
       res.setHeader('Access-Control-Allow-Origin', '*');
 
-      const isE72Profile =
-        req.path.includes('e72') ||
-        req.query.profile === 'e72' ||
-        req.query.profile === 'qvga';
+      const resQuery = ((req.query.res as string) || (req.query.resolution as string) || (req.query.profile as string) || '').toLowerCase();
+      const isE72Endpoint = req.path.includes('e72');
+      const isLiveEndpoint = req.path.includes('live');
 
-      const ffmpegArgs = isE72Profile
-        ? [
-            '-re',
-            '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
-            '-i', streamUrl,
-            '-vf', 'scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2,format=yuv420p',
-            '-c:v', 'libx264',
-            '-profile:v', 'baseline',
-            '-level', '1.3',
-            '-preset', 'ultrafast',
-            '-tune', 'zerolatency',
-            '-b:v', '350k',
-            '-maxrate', '450k',
-            '-bufsize', '800k',
-            '-r', '20',
-            '-c:a', 'aac',
-            '-b:a', '64k',
-            '-ar', '44100',
-            '-ac', '2',
-            '-f', 'mpegts',
-            'pipe:1'
-          ]
-        : [
-            '-re',
-            '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
-            '-i', streamUrl,
-            '-c', 'copy',
-            '-f', 'mpegts',
-            'pipe:1'
-          ];
+      // Determine transcoding profile:
+      // - 180p: Ultra-light, 240x180, 15fps, 180kbps (Instant loading on 2G/3G or slow cellular)
+      // - 240p: Standard QVGA, 320x240, 20fps, 350kbps (Native pixel match for Nokia E72 screen)
+      // - 360p: Smooth SD, 640x360, 24fps, 650kbps (Smooth for mobile web and low bandwidth)
+      // - 480p: DVD SD, 854x480, 25fps, 1100kbps (Standard web)
+      // - 720p: HD, 1280x720, 30fps, 1800kbps (High definition)
+      // - copy: Direct remuxing without re-encoding
+      let profile: '180p' | '240p' | '360p' | '480p' | '720p' | 'copy';
+
+      if (resQuery === '180p' || resQuery === '180' || resQuery === 'nqvga' || resQuery === 'ultralight') {
+        profile = '180p';
+      } else if (resQuery === '240p' || resQuery === '240' || resQuery === 'qvga' || resQuery === 'e72') {
+        profile = '240p';
+      } else if (resQuery === '360p' || resQuery === '360' || resQuery === 'sd' || resQuery === 'low') {
+        profile = '360p';
+      } else if (resQuery === '480p' || resQuery === '480' || resQuery === 'hq') {
+        profile = '480p';
+      } else if (resQuery === '720p' || resQuery === '720' || resQuery === 'hd') {
+        profile = '720p';
+      } else if (resQuery === 'copy' || resQuery === 'original' || resQuery === 'goc' || isLiveEndpoint) {
+        profile = 'copy';
+      } else if (isE72Endpoint) {
+        profile = '240p'; // Default for Nokia E72
+      } else {
+        profile = 'copy';
+      }
+
+      let ffmpegArgs: string[];
+
+      if (profile === 'copy') {
+        ffmpegArgs = [
+          '-re',
+          '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
+          '-i', streamUrl,
+          '-c', 'copy',
+          '-f', 'mpegts',
+          'pipe:1'
+        ];
+      } else {
+        const config = {
+          '180p': { w: 240, h: 180, fps: '15', bV: '180k', maxV: '240k', buf: '400k', bA: '48k', ar: '32000' },
+          '240p': { w: 320, h: 240, fps: '20', bV: '350k', maxV: '450k', buf: '800k', bA: '64k', ar: '44100' },
+          '360p': { w: 640, h: 360, fps: '24', bV: '650k', maxV: '850k', buf: '1300k', bA: '96k', ar: '44100' },
+          '480p': { w: 854, h: 480, fps: '25', bV: '1100k', maxV: '1400k', buf: '2200k', bA: '128k', ar: '44100' },
+          '720p': { w: 1280, h: 720, fps: '30', bV: '1800k', maxV: '2200k', buf: '3600k', bA: '128k', ar: '44100' }
+        }[profile];
+
+        ffmpegArgs = [
+          '-re',
+          '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
+          '-i', streamUrl,
+          '-vf', `scale=${config.w}:${config.h}:force_original_aspect_ratio=decrease,pad=${config.w}:${config.h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`,
+          '-c:v', 'libx264',
+          '-profile:v', 'baseline',
+          '-level', '1.3',
+          '-preset', 'ultrafast',
+          '-tune', 'zerolatency',
+          '-b:v', config.bV,
+          '-maxrate', config.maxV,
+          '-bufsize', config.buf,
+          '-r', config.fps,
+          '-c:a', 'aac',
+          '-b:a', config.bA,
+          '-ar', config.ar,
+          '-ac', '2',
+          '-f', 'mpegts',
+          'pipe:1'
+        ];
+      }
 
       const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
@@ -318,7 +356,10 @@ router.get(
       const proto = isCorePlayer
         ? ((req.query.proto as string) || 'http')
         : ((req.headers['x-forwarded-proto'] as string) || req.protocol || 'http');
-      const e72TsUrl = `${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts`;
+      const resQuery = ((req.query.res as string) || (req.query.resolution as string) || '').toLowerCase();
+      const resParam = resQuery ? `?res=${encodeURIComponent(resQuery)}` : '';
+
+      const e72TsUrl = `${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts${resParam}`;
       const liveTsUrl = `${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
 
       let m3uBody: string;
@@ -328,11 +369,24 @@ router.get(
         // 1. NO UTF-8 BOM (\uFEFF) - BOM corrupts CorePlayer's parser causing "Error opening file"
         // 2. Simple EXTINF without quotes or unsupported IPTV metadata tags
         // 3. Absolute full plain HTTP link to E72 QVGA stream (CorePlayer requires absolute URL when opened from SD card)
-        // 4. Secondary entry for direct unscaled MPEG-TS via HTTP
+        // 4. Multi-resolution options so user can switch between ultra-light 180p, standard 240p QVGA, and 360p SD
         // 5. DO NOT include https:// streams - Symbian TLS negotiation failure triggers "HTTPS hỗ trợ các thỏa thuận không được"
-        let entries = `#EXTM3U\r\n#EXTINF:0,${safeAsciiName} (E72 QVGA 320x240)\r\n${e72TsUrl}\r\n#EXTINF:0,${safeAsciiName} (MPEG-TS Goc)\r\n${liveTsUrl}\r\n`;
+        let entries = `#EXTM3U\r\n`;
+        // Selected or default resolution first
+        if (resQuery === '180p') {
+          entries += `#EXTINF:0,${safeAsciiName} [180p Sieu Nhe - Mang Yeu 2G-3G]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=180p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=240p\r\n`;
+        } else if (resQuery === '360p') {
+          entries += `#EXTINF:0,${safeAsciiName} [360p SD - Man Hinh Lon]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=360p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=240p\r\n`;
+        } else {
+          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72 - Muot Ma]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=240p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [180p Sieu Nhe - Tai Nhanh Mang Yeu]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=180p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [360p SD - Net Hon]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=360p\r\n`;
+        }
+        entries += `#EXTINF:0,${safeAsciiName} [Goc MPEG-TS Khong Nen]\r\n${liveTsUrl}\r\n`;
         if (channel.stream_url && channel.stream_url.startsWith('http://')) {
-          entries += `#EXTINF:0,${safeAsciiName} (Stream Goc HTTP)\r\n${channel.stream_url}\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [Nguon Goc HTTP]\r\n${channel.stream_url}\r\n`;
         }
         m3uBody = entries;
       } else {

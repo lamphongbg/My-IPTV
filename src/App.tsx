@@ -7,6 +7,12 @@ import { NokiaSimulatorModal } from './components/NokiaSimulatorModal';
 import { M3uImporterModal } from './components/M3uImporterModal';
 import { CategoryScrollNav } from './components/CategoryScrollNav';
 import { AdminPortal } from './components/AdminPortal';
+import { ToastNotification, ToastItem } from './components/ToastNotification';
+import {
+  getReminders,
+  toggleReminder,
+  checkCategoryCountIncreases,
+} from './utils/reminderManager';
 import { isNokiaLightweightBrowser } from './utils/deviceHelper';
 import {
   Tv,
@@ -51,6 +57,24 @@ export default function App() {
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
 
+  // Reminders and Toasts state
+  const [remindedChannelIds, setRemindedChannelIds] = useState<string[]>([]);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const addToast = useCallback((toast: Omit<ToastItem, 'id'>) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newToast: ToastItem = { ...toast, id };
+    setToasts((prev) => [...prev, newToast]);
+
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   // Determine whether current environment is the lightweight browser for Nokia E72
   const isNokiaLightweight = isNokiaLightweightBrowser(deviceInfo);
 
@@ -70,7 +94,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Load favorites & recent from localStorage
+  // Load favorites, recent & reminders from localStorage
   useEffect(() => {
     try {
       const savedFavs = localStorage.getItem(STORAGE_FAVORITES_KEY);
@@ -78,6 +102,9 @@ export default function App() {
 
       const savedRecent = localStorage.getItem(STORAGE_RECENT_KEY);
       if (savedRecent) setRecentIds(JSON.parse(savedRecent));
+
+      const savedReminders = getReminders();
+      setRemindedChannelIds(savedReminders.map((r) => r.channelId));
     } catch (e) {
       console.warn('Could not read localStorage:', e);
     }
@@ -106,6 +133,10 @@ export default function App() {
           setCategories(gData.groups || []);
           setGroupCounts(gData.counts || {});
           setTotalSystemChannels(gData.totalChannels || 0);
+
+          if (gData.counts) {
+            checkCategoryCountIncreases(gData.counts);
+          }
         }
       }
 
@@ -119,6 +150,57 @@ export default function App() {
     } catch (err) {
       console.error('Error fetching metadata:', err);
     }
+  }, []);
+
+  // Listen for new channel alert events from reminder system
+  useEffect(() => {
+    const handleNewChannelAlert = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      const { channelName, category, channelId } = detail;
+
+      addToast({
+        title: `Kênh mới trong danh mục "${category}"!`,
+        message: `Kênh "${channelName}" vừa được thêm vào hệ thống.`,
+        type: 'alert',
+        channelId,
+        category,
+        actionText: 'Xem kênh ngay',
+        onAction: channelId
+          ? () => {
+              fetch(`/api/channels/${encodeURIComponent(channelId)}`)
+                .then((r) => (r.ok ? r.json() : null))
+                .then((ch) => {
+                  if (ch) {
+                    setSelectedChannel(ch);
+                    setPlayTrigger((prev) => prev + 1);
+                  }
+                })
+                .catch(() => {});
+            }
+          : undefined,
+      });
+    };
+
+    window.addEventListener('iptv:new-channel-alert', handleNewChannelAlert);
+    return () => window.removeEventListener('iptv:new-channel-alert', handleNewChannelAlert);
+  }, [addToast]);
+
+  // Periodic background check for category channel count increases (every 30s)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetch('/api/groups')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((gData) => {
+          if (gData && gData.counts) {
+            setGroupCounts(gData.counts);
+            setTotalSystemChannels(gData.totalChannels || 0);
+            checkCategoryCountIncreases(gData.counts);
+          }
+        })
+        .catch(() => {});
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -253,6 +335,37 @@ export default function App() {
       return updated;
     });
   };
+
+  // Toggle reminder for channel & category
+  const handleToggleReminder = useCallback(
+    (channel: Channel, e: React.MouseEvent) => {
+      e.stopPropagation();
+      const currentCatCount = groupCounts[channel.group] || 0;
+      const result = toggleReminder(channel, currentCatCount);
+
+      setRemindedChannelIds((prev) =>
+        result.isReminded
+          ? [...prev, channel.id]
+          : prev.filter((id) => id !== channel.id)
+      );
+
+      if (result.isReminded) {
+        addToast({
+          title: 'Đã bật nhắc nhở',
+          message: `Bạn sẽ nhận được thông báo khi có kênh mới trong danh mục "${channel.group}".`,
+          type: 'reminder',
+          category: channel.group,
+        });
+      } else {
+        addToast({
+          title: 'Đã tắt nhắc nhở',
+          message: `Đã hủy nhận thông báo cho kênh "${channel.name}".`,
+          type: 'info',
+        });
+      }
+    },
+    [groupCounts, addToast]
+  );
 
   // Open Channel Detail modal
   const handleOpenDetails = (channel: Channel, e?: React.MouseEvent) => {
@@ -598,9 +711,11 @@ export default function App() {
                         channel={channel}
                         isActive={selectedChannel?.id === channel.id}
                         isFavorite={favorites.includes(channel.id)}
+                        isReminded={remindedChannelIds.includes(channel.id)}
                         onSelect={handleSelectChannel}
                         onPlay={handleSelectChannel}
                         onToggleFavorite={handleToggleFavorite}
+                        onToggleReminder={handleToggleReminder}
                         onOpenDetails={(ch, e) => handleOpenDetails(ch, e)}
                         isNokiaLightweight={isNokiaLightweight}
                       />
@@ -677,6 +792,9 @@ export default function App() {
         onClose={() => setIsM3uModalOpen(false)}
         onImportChannels={handleImportChannels}
       />
+
+      {/* Local Channel Reminders & Category Alert Toasts */}
+      <ToastNotification toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

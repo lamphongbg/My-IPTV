@@ -162,8 +162,13 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
   const customHost = (req.query.host as string) || (req.query.ip as string) || '';
   const host = customHost || req.get('host') || '127.0.0.1:3000';
   const proto = 'http'; // CorePlayer requires plain HTTP without SSL/TLS
-  const targetCorePlayerM3u = `/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u${customHost ? `?host=${encodeURIComponent(customHost)}` : ''}`;
-  const e72TsUrl = `/api/channel/${encodeURIComponent(channel.id)}/e72.ts`;
+  const selectedRes = ((req.query.res as string) || '240p').toLowerCase();
+
+  const hostQueryParam = customHost ? `&host=${encodeURIComponent(customHost)}` : '';
+  const hostParamForM3u = customHost ? `?host=${encodeURIComponent(customHost)}&res=${selectedRes}` : `?res=${selectedRes}`;
+
+  const targetCorePlayerM3u = `/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u${hostParamForM3u}`;
+  const e72TsUrl = `/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=${selectedRes}`;
   const absoluteE72TsUrl = `${proto}://${host}${e72TsUrl}`;
   const liveTsUrl = `/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
   const absoluteLiveTsUrl = `${proto}://${host}${liveTsUrl}`;
@@ -194,12 +199,41 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
     .alert-box { background: #3b1111; border: 1px solid #ef4444; border-radius: 8px; padding: 10px; margin: 10px 0; font-size: 12px; color: #fca5a5; line-height: 1.5; }
     .footer-link { color: #9ca3af; text-decoration: none; font-size: 12px; display: block; text-align: center; margin-top: 12px; }
     .ip-box { background: #111827; border: 1px solid #374151; border-radius: 6px; padding: 8px; margin: 10px 0; }
+    .res-box { background: #172033; border: 1px solid #2563eb; border-radius: 8px; padding: 10px; margin: 10px 0; }
+    .res-tag { display: inline-block; padding: 4px 8px; margin: 3px 2px; border-radius: 5px; font-size: 11px; font-weight: bold; text-decoration: none; border: 1px solid transparent; }
+    .res-active { background-color: #2563eb; color: #fff !important; border-color: #60a5fa; }
+    .res-inactive { background-color: #1f2937; color: #93c5fd !important; border-color: #374151; }
   </style>
 </head>
 <body>
   <div class="card">
     <h3>KẾT NỐI PHÁT KÊNH TRÊN ĐIỆN THOẠI</h3>
     <div class="ch-name">${escapeHtml(channel.name)}</div>
+
+    <!-- TÙY CHỌN ĐỘ PHÂN GIẢI -->
+    <div class="res-box">
+      <div style="font-weight:bold;color:#60a5fa;margin-bottom:6px;font-size:12px;">
+        ⚡ CHỌN ĐỘ PHÂN GIẢI (TĂNG TỐC TẢI &amp; MƯỢT HÌNH):
+      </div>
+      <div>
+        <a class="res-tag ${selectedRes === '180p' ? 'res-active' : 'res-inactive'}" href="/open/${encodeURIComponent(channel.id)}?res=180p${hostQueryParam}">
+          ⚡ 180p (Siêu nhẹ - Tải tức thì)
+        </a>
+        <a class="res-tag ${selectedRes === '240p' ? 'res-active' : 'res-inactive'}" href="/open/${encodeURIComponent(channel.id)}?res=240p${hostQueryParam}">
+          📺 240p QVGA (Chuẩn E72)
+        </a>
+        <a class="res-tag ${selectedRes === '360p' ? 'res-active' : 'res-inactive'}" href="/open/${encodeURIComponent(channel.id)}?res=360p${hostQueryParam}">
+          📱 360p (Màn lớn / Nét hơn)
+        </a>
+      </div>
+      <div style="font-size:11px;color:#cbd5e1;margin-top:6px;line-height:1.4;">
+        ${selectedRes === '180p'
+          ? '✓ <strong>180p</strong>: Dung lượng siêu nhỏ (180kbps, 15fps), tải nhanh như chớp trên mạng 2G/3G hoặc Wi-Fi yếu.'
+          : selectedRes === '360p'
+          ? '✓ <strong>360p</strong>: Độ nét cao hơn (650kbps, 24fps) cho smartphone hoặc màn hình lớn.'
+          : '✓ <strong>240p QVGA</strong>: Chuẩn tỉ lệ 320x240 của màn hình Nokia E72, CPU ARM11 giải mã mượt mà nhất.'}
+      </div>
+    </div>
 
     <!-- Hướng dẫn xử lý lỗi HTTPS của CorePlayer -->
     <div class="alert-box">
@@ -211,6 +245,7 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
     <!-- Cấu hình IP LAN nếu chạy cùng Wi-Fi -->
     <div class="ip-box">
       <form action="/open/${encodeURIComponent(channel.id)}" method="GET">
+        <input type="hidden" name="res" value="${escapeHtml(selectedRes)}" />
         <label style="font-size:11px;color:#cbd5e1;display:block;margin-bottom:4px;font-weight:bold;">
           &#128246; Cấu hình IP máy tính LAN (khi E72 kết nối Wi-Fi nhà):
         </label>
@@ -222,8 +257,8 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
     </div>
 
     <!-- Nút phát cho E72 và CorePlayer -->
-    <a class="btn btn-e72" href="${escapeHtml(e72TsUrl)}">&#9654; XEM TRÊN NOKIA E72 (QVGA 320x240 MƯỢT NHẸ)</a>
-    <a class="btn btn-green" href="${escapeHtml(targetCorePlayerM3u)}">&#128190; TẢI FILE .M3U CHO COREPLAYER (CHUẨN HTTP - KHÔNG LỖI SSL)</a>
+    <a class="btn btn-e72" href="${escapeHtml(e72TsUrl)}">&#9654; XEM TRÊN NOKIA E72 (${escapeHtml(selectedRes.toUpperCase())} - ${selectedRes === '180p' ? 'SIÊU NHẸ' : selectedRes === '360p' ? 'NÉT HƠN' : 'MƯỢT NHẸ'})</a>
+    <a class="btn btn-green" href="${escapeHtml(targetCorePlayerM3u)}">&#128190; TẢI FILE .M3U CHO COREPLAYER (${escapeHtml(selectedRes.toUpperCase())} CHUẨN HTTP)</a>
 
     <!-- Nút cho smartphone -->
     <a class="btn btn-vlc" href="${escapeHtml(vlcLaunchUrl)}">&#9654; XEM TRÊN VLC PLAYER (CHO ANDROID / IPHONE)</a>
@@ -236,7 +271,7 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
         2. Bấm <strong>Menu (Phím chọn trái) &gt; Open URL (Mở URL)</strong>.<br />
         3. Điền đường link sau (chú ý là <strong>http://</strong>, không dùng https):
         <div class="url">${escapeHtml(absoluteE72TsUrl)}</div>
-        <em>(Luồng này đã được chuyển mã xuống 320x240 H.264 Baseline L1.3 và AAC 64k, CPU E72 chạy mát và mượt mà 100%).</em><br /><br />
+        <em>(Độ phân giải hiện tại: ${escapeHtml(selectedRes.toUpperCase())}, đã tối ưu H.264 Baseline L1.3 và AAC, phát mượt mà không khựng hình).</em><br /><br />
         <strong>Cách 2 (Mở bằng file .M3U):</strong><br />
         &bull; Bấm nút <strong>"Tải file .M3U cho CorePlayer"</strong> ở trên.<br />
         &bull; Mở trình quản lý file trên E72 &gt; Chọn file vừa tải &gt; Mở bằng <strong>CorePlayer</strong>.<br /><br />

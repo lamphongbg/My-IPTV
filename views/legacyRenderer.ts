@@ -392,14 +392,16 @@ ${LEGACY_CSS}
 </html>`;
 }
 
-export function renderLegacyChannel(channel: Channel, host: string = ''): string {
+export function renderLegacyChannel(channel: Channel, host: string = '', resChoice: string = '240p'): string {
+  const effectiveRes = (resChoice || '240p').toLowerCase();
   const hostParamOnly = host ? `?host=${encodeURIComponent(host)}` : '';
-  const directOpenUrl = `/open/${encodeURIComponent(channel.id)}${hostParamOnly}`;
-  const corePlayerM3uUrl = `/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u${hostParamOnly}`;
+  const queryParams = host ? `?host=${encodeURIComponent(host)}&res=${effectiveRes}` : `?res=${effectiveRes}`;
+  const directOpenUrl = `/open/${encodeURIComponent(channel.id)}${queryParams}`;
+  const corePlayerM3uUrl = `/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u${queryParams}`;
   const directStreamUrl = channel.stream_url;
 
   const displayHost = host || '192.168.1.xxx:3000';
-  const fullE72Url = `http://${displayHost}/api/channel/${encodeURIComponent(channel.id)}/e72.ts`;
+  const fullE72Url = `http://${displayHost}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=${effectiveRes}`;
   const fullLiveTsUrl = `http://${displayHost}/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
 
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -422,6 +424,27 @@ ${LEGACY_CSS}
     <div style="font-size:11px;color:#f4d35e;">Nhóm: ${escapeHtml(channel.group)}</div>
   </div>
 
+  <!-- TÙY CHỌN ĐỘ PHÂN GIẢI -->
+  <div class="box" style="background:#172554;border:1px solid #3b82f6;text-align:center;">
+    <div style="font-weight:bold;color:#60a5fa;margin-bottom:4px;font-size:12px;">
+      ⚡ CHỌN ĐỘ PHÂN GIẢI (TĂNG TỐC TẢI &amp; MƯỢT HÌNH):
+    </div>
+    <div style="margin:4px 0;">
+      <a class="btn" style="display:inline-block;padding:4px 8px;margin:2px;font-size:11px;${effectiveRes === '180p' ? 'background:#2563eb;color:#fff;font-weight:bold;' : 'background:#1f2937;color:#93c5fd;'}" href="/legacy/channel/${encodeURIComponent(channel.id)}?res=180p${host ? `&host=${encodeURIComponent(host)}` : ''}">
+        ⚡ 180p Siêu nhẹ (2G/3G)
+      </a>
+      <a class="btn" style="display:inline-block;padding:4px 8px;margin:2px;font-size:11px;${effectiveRes === '240p' ? 'background:#2563eb;color:#fff;font-weight:bold;' : 'background:#1f2937;color:#93c5fd;'}" href="/legacy/channel/${encodeURIComponent(channel.id)}?res=240p${host ? `&host=${encodeURIComponent(host)}` : ''}">
+        📺 240p QVGA (Chuẩn E72)
+      </a>
+      <a class="btn" style="display:inline-block;padding:4px 8px;margin:2px;font-size:11px;${effectiveRes === '360p' ? 'background:#2563eb;color:#fff;font-weight:bold;' : 'background:#1f2937;color:#93c5fd;'}" href="/legacy/channel/${encodeURIComponent(channel.id)}?res=360p${host ? `&host=${encodeURIComponent(host)}` : ''}">
+        📱 360p SD (Nét hơn)
+      </a>
+    </div>
+    <div style="font-size:10px;color:#cbd5e1;margin-top:2px;">
+      ${effectiveRes === '180p' ? 'Đang chọn 180p: Siêu nhẹ, tải tức thì không gián đoạn.' : effectiveRes === '360p' ? 'Đang chọn 360p: Độ nét tốt hơn cho màn hình lớn.' : 'Đang chọn 240p: Chuẩn tỉ lệ màn hình ngang E72 320x240.'}
+    </div>
+  </div>
+
   <!-- CẢNH BÁO LỖI HTTPS CỦA COREPLAYER -->
   <div class="box" style="background:#3b1111;border:1px solid #ef4444;color:#fca5a5;font-size:12px;line-height:1.5;">
     <strong style="color:#f87171;font-size:13px;">⚠️ KHẮC PHỤC LỖI "HTTPS hỗ trợ các thỏa thuận không được":</strong><br />
@@ -432,6 +455,7 @@ ${LEGACY_CSS}
   <!-- CẤU HÌNH IP LAN -->
   <div class="box" style="background:#111827;border:1px solid #374151;">
     <form action="/legacy/channel/${encodeURIComponent(channel.id)}" method="GET">
+      <input type="hidden" name="res" value="${escapeHtml(effectiveRes)}" />
       <div class="form-label" style="color:#38bdf8;">&#128246; Cấu hình IP máy tính LAN (Wi-Fi):</div>
       <input class="input-text" type="text" name="host" value="${escapeHtml(host)}" placeholder="VD: 192.168.1.15:3000" />
       <input class="btn-search" style="background:#0284c7;color:#fff;border-color:#0369a1;margin-top:4px;" type="submit" value="Cập Nhật IP Cho Kênh" />
@@ -440,15 +464,15 @@ ${LEGACY_CSS}
 
   <div class="box" style="text-align:center;">
     <a class="btn-coreplayer" style="background:#b33939;border:1px solid #ff6b6b;color:#fff;display:block;margin:6px auto;width:90%;padding:10px 8px;text-decoration:none;font-weight:bold;font-size:13px;" href="${directOpenUrl}">
-      &#9654; XEM TRÊN E72 / COREPLAYER (QVGA 320x240 - MƯỢT NHẤT)
+      &#9654; XEM TRÊN E72 / COREPLAYER (${escapeHtml(effectiveRes.toUpperCase())} - MƯỢT NHẤT)
     </a>
 
     <a class="btn" style="background:#1e7e34;border:1px solid #28a745;color:#fff;display:block;margin:6px auto;width:90%;padding:8px 8px;text-decoration:none;font-weight:bold;" href="${corePlayerM3uUrl}">
-      &#128190; TẢI FILE .M3U CHO COREPLAYER (CHUẨN HTTP - KHÔNG LỖI SSL)
+      &#128190; TẢI FILE .M3U CHO COREPLAYER (${escapeHtml(effectiveRes.toUpperCase())} CHUẨN HTTP)
     </a>
 
-    <a class="btn" style="background:#0369a1;border:1px solid #0284c7;color:#fff;display:block;margin:6px auto;width:90%;padding:8px 8px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/e72.ts">
-      &#9654; PHÁT TRỰC TIẾP LUỒNG E72 (.TS)
+    <a class="btn" style="background:#0369a1;border:1px solid #0284c7;color:#fff;display:block;margin:6px auto;width:90%;padding:8px 8px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=${effectiveRes}">
+      &#9654; PHÁT TRỰC TIẾP LUỒNG E72 (${escapeHtml(effectiveRes.toUpperCase())} .TS)
     </a>
 
     <a class="btn" style="background:#4b5563;border:1px solid #6b7280;color:#fff;display:block;margin:6px auto;width:90%;padding:6px 8px;text-decoration:none;font-size:11px;" href="/api/channel/${encodeURIComponent(channel.id)}/live.ts">
@@ -469,7 +493,7 @@ ${LEGACY_CSS}
   </div>
 
   <div class="box">
-    <strong style="color:#52b788;">1. LINK STREAM QVGA CHO NOKIA E72 (320x240):</strong>
+    <strong style="color:#52b788;">1. LINK STREAM ${escapeHtml(effectiveRes.toUpperCase())} CHO NOKIA E72:</strong>
     <p style="font-size:11px;margin:2px 0 4px 0;color:#bbb;">Nhập link này vào CorePlayer &gt; Open URL (dùng chuẩn <strong>http://</strong>):</p>
     <div class="url-box">${escapeHtml(fullE72Url)}</div>
     <textarea rows="2" style="width:96%;font-size:11px;background:#111;color:#0f6;border:1px solid #444;" readonly="readonly">${escapeHtml(fullE72Url)}</textarea>
