@@ -95,20 +95,26 @@ export default function App() {
   const fetchMetadata = useCallback(async () => {
     try {
       const [groupsRes, deviceRes] = await Promise.all([
-        fetch('/api/groups'),
-        fetch('/api/device-info')
+        fetch('/api/groups').catch(() => null),
+        fetch('/api/device-info').catch(() => null),
       ]);
 
-      if (groupsRes.ok) {
-        const gData = await groupsRes.json();
-        setCategories(gData.groups || []);
-        setGroupCounts(gData.counts || {});
-        setTotalSystemChannels(gData.totalChannels || 0);
+      if (groupsRes && groupsRes.ok) {
+        const ct = groupsRes.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const gData = await groupsRes.json();
+          setCategories(gData.groups || []);
+          setGroupCounts(gData.counts || {});
+          setTotalSystemChannels(gData.totalChannels || 0);
+        }
       }
 
-      if (deviceRes.ok) {
-        const dData = await deviceRes.json();
-        setDeviceInfo(dData);
+      if (deviceRes && deviceRes.ok) {
+        const ct = deviceRes.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const dData = await deviceRes.json();
+          setDeviceInfo(dData);
+        }
       }
     } catch (err) {
       console.error('Error fetching metadata:', err);
@@ -354,15 +360,26 @@ export default function App() {
               <span className="hidden md:inline">Nhập M3U</span>
             </button>
 
-            {/* Download M3U */}
+            {/* Download M3U VLC */}
             <a
               href="/playlist.m3u"
               download="playlist.m3u"
               className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 rounded-lg text-xs font-medium flex items-center gap-1.5 transition"
-              title="Tải về file playlist.m3u cho VLC / CorePlayer"
+              title="Tải về file playlist.m3u cho VLC"
             >
               <Download className="w-3.5 h-3.5 text-neutral-400" />
               <span className="hidden md:inline">Tải M3U</span>
+            </a>
+
+            {/* Download Nokia E72 M3U */}
+            <a
+              href="/api/channels/e72.m3u"
+              download="nokia_e72_playlist.m3u"
+              className="px-3 py-1.5 bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/60 rounded-lg text-xs font-medium flex items-center gap-1.5 transition"
+              title="Tải file playlist .m3u đã nén chuẩn QVGA 320x240 và không lỗi BOM cho Nokia E72"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">M3U E72</span>
             </a>
           </div>
         </div>

@@ -19,11 +19,16 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
   const isNokia = isNokiaLightweight ?? isNokiaLightweightBrowser();
   const [copied, setCopied] = useState<boolean>(false);
   const [showNokiaGuide, setShowNokiaGuide] = useState<boolean>(isNokia);
+  const [urlMode, setUrlMode] = useState<'original' | 'e72'>('original');
 
   if (!channel) return null;
 
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const e72StreamUrl = `${currentOrigin}/api/channel/${channel.id}/e72.ts`;
+  const activeUrl = urlMode === 'e72' ? e72StreamUrl : channel.stream_url;
+
   const handleCopyUrl = () => {
-    navigator.clipboard.writeText(channel.stream_url);
+    navigator.clipboard.writeText(activeUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -66,14 +71,41 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
         <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
           {/* Stream URL Box */}
           <div>
-            <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
-              URL LUỒNG PHÁT (STREAM URL)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-neutral-300">
+                URL LUỒNG PHÁT (STREAM URL)
+              </label>
+              <div className="flex items-center gap-1 bg-neutral-950 p-0.5 rounded-lg border border-neutral-800 text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setUrlMode('original')}
+                  className={`px-2 py-0.5 rounded font-medium transition ${
+                    urlMode === 'original'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  Gốc (HLS/HTTP)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUrlMode('e72')}
+                  className={`px-2 py-0.5 rounded font-medium transition ${
+                    urlMode === 'e72'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  Nokia E72 (QVGA TS)
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 readOnly
-                value={channel.stream_url}
+                value={activeUrl}
                 className="w-full bg-neutral-950 border border-neutral-800 text-emerald-400 text-xs font-mono p-2.5 rounded-lg focus:outline-none selection:bg-emerald-950"
               />
               <button
@@ -84,6 +116,11 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
                 <span>{copied ? 'Đã copy' : 'Copy'}</span>
               </button>
             </div>
+            {urlMode === 'e72' && (
+              <p className="text-[11px] text-emerald-400/90 mt-1">
+                ✓ Luồng chuyển mã thời gian thực chuẩn 320x240 H.264 Baseline L1.3 + AAC 64k tối ưu cho CorePlayer trên Nokia E72.
+              </p>
+            )}
           </div>
 
           {/* Quick External Launchers */}

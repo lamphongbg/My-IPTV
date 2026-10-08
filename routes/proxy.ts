@@ -5,6 +5,22 @@ import { URL } from 'url';
 
 const router = Router();
 
+// Reusable connection agents for low-latency streaming
+const httpAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 10000,
+  maxSockets: 64,
+  timeout: 10000,
+});
+
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 10000,
+  maxSockets: 64,
+  timeout: 10000,
+  rejectUnauthorized: false,
+});
+
 // Handle preflight CORS requests
 router.options('/api/proxy/stream', (_req: Request, res: Response) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -18,22 +34,23 @@ router.options('/api/proxy/stream', (_req: Request, res: Response) => {
  * - Resolves CORS issues for modern browsers
  * - Bridges mixed-content (HTTP streams loaded on HTTPS pages)
  * - Automatically rewrites .m3u8 manifests so that chunklists and .ts segments route through this proxy
+ * - Gracefully handles dead, hanging, or slow upstream IPTV streams without crashing or throwing
  */
 router.get('/api/proxy/stream', async (req: Request, res: Response) => {
   const targetUrl = req.query.url as string;
 
   if (!targetUrl || typeof targetUrl !== 'string') {
-    return res.status(400).send('Missing "url" parameter');
+    return res.status(400).json({ error: 'Missing "url" parameter' });
   }
 
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(targetUrl);
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return res.status(400).send('Invalid protocol. Only HTTP and HTTPS are supported.');
+      return res.status(400).json({ error: 'Invalid protocol. Only HTTP and HTTPS are supported.' });
     }
-  } catch (err) {
-    return res.status(400).send('Invalid target URL');
+  } catch (_err) {
+    return res.status(400).json({ error: 'Invalid target URL' });
   }
 
   // Set global CORS headers
@@ -41,15 +58,23 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
   res.header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.header('Access-Control-Allow-Headers', '*');
 
+  let isAborted = false;
+  let isTimedOut = false;
+
+  // Track client cancellation (video switched, paused, or tab closed)
+  req.on('close', () => {
+    isAborted = true;
+  });
+
   try {
     const isHttps = parsedUrl.protocol === 'https:';
     const client = isHttps ? https : http;
 
     const requestHeaders: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': '*/*',
       'Accept-Encoding': 'identity', // Do not gzip manifests so we can rewrite text
-      'Connection': 'keep-alive',
     };
 
     if (req.headers.range) {
@@ -63,12 +88,18 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
       path: parsedUrl.pathname + parsedUrl.search,
       method: req.method === 'HEAD' ? 'HEAD' : 'GET',
       headers: requestHeaders,
-      timeout: 12000,
+      agent: isHttps ? httpsAgent : httpAgent,
+      timeout: 10000,
       rejectUnauthorized: false, // Permit IPTV servers with self-signed or expired certs
     };
 
     const proxyReq = client.request(requestOptions, (remoteRes) => {
-      // Handle HTTP redirects (301, 302, 307, 308)
+      if (isAborted) {
+        remoteRes.destroy();
+        return;
+      }
+
+      // Handle HTTP redirects (301, 302, 303, 307, 308)
       if (
         remoteRes.statusCode &&
         [301, 302, 303, 307, 308].includes(remoteRes.statusCode) &&
@@ -89,11 +120,23 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
         parsedUrl.pathname.endsWith('.m3u8') ||
         parsedUrl.search.includes('.m3u8');
 
+      // If remote returned an error status (4xx/5xx), pass through directly
+      if (remoteRes.statusCode && remoteRes.statusCode >= 400) {
+        res.status(remoteRes.statusCode);
+        if (contentType) res.setHeader('Content-Type', contentType);
+        remoteRes.pipe(res);
+        return;
+      }
+
       if (isM3u8 && req.method !== 'HEAD') {
         // Read manifest into buffer and rewrite segment links
         const chunks: Buffer[] = [];
-        remoteRes.on('data', (chunk) => chunks.push(chunk));
+        remoteRes.on('data', (chunk) => {
+          if (!isAborted) chunks.push(chunk);
+        });
         remoteRes.on('end', () => {
+          if (isAborted || res.headersSent || res.writableEnded) return;
+
           const manifestText = Buffer.concat(chunks).toString('utf-8');
 
           if (!manifestText.includes('#EXTM3U')) {
@@ -140,9 +183,10 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
           return res.status(200).send(rewrittenManifest);
         });
 
-        remoteRes.on('error', (err) => {
-          console.error('[Proxy] Manifest read error:', err.message);
-          if (!res.headersSent) res.status(502).send('Error reading stream manifest');
+        remoteRes.on('error', (_err) => {
+          if (!isAborted && !res.headersSent && !res.writableEnded) {
+            res.status(502).json({ error: 'Error reading stream manifest' });
+          }
         });
       } else {
         // Binary media chunks (.ts, .aac, .m4s) or HEAD request: pipe directly
@@ -158,24 +202,65 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
           res.setHeader('Accept-Ranges', remoteRes.headers['accept-ranges']);
         }
         res.setHeader('Cache-Control', 'public, max-age=60');
+
         remoteRes.pipe(res);
+
+        res.on('close', () => {
+          if (!remoteRes.destroyed) {
+            try {
+              remoteRes.destroy();
+            } catch {
+              // ignore
+            }
+          }
+        });
+      }
+    });
+
+    req.on('close', () => {
+      if (!proxyReq.destroyed) {
+        try {
+          proxyReq.destroy();
+        } catch {
+          // ignore
+        }
       }
     });
 
     proxyReq.on('timeout', () => {
-      proxyReq.destroy();
-      if (!res.headersSent) res.status(504).send('Stream source connection timed out');
+      isTimedOut = true;
+      try {
+        proxyReq.destroy();
+      } catch {
+        // ignore
+      }
+      if (!isAborted && !res.headersSent && !res.writableEnded) {
+        res.status(504).json({
+          error: 'Gateway Timeout',
+          message: 'Stream source timed out.',
+        });
+      }
     });
 
-    proxyReq.on('error', (err) => {
-      console.warn('[Proxy] Request error for', targetUrl, ':', err.message);
-      if (!res.headersSent) res.status(502).send(`Proxy connection error: ${err.message}`);
+    proxyReq.on('error', (err: any) => {
+      // Discard silently if request was already aborted or timed out
+      if (isAborted || isTimedOut || res.headersSent || res.writableEnded) {
+        return;
+      }
+      // Return clean HTTP 502 without outputting error logs to stderr
+      res.status(502).json({
+        error: 'Bad Gateway',
+        message: `Stream source unavailable (${err.message || 'connection failed'})`,
+      });
     });
 
     proxyReq.end();
   } catch (err: any) {
-    if (!res.headersSent) {
-      res.status(500).send(`Internal proxy error: ${err.message}`);
+    if (!res.headersSent && !res.writableEnded) {
+      res.status(500).json({
+        error: 'Proxy Error',
+        message: err.message || 'Internal proxy error',
+      });
     }
   }
 });

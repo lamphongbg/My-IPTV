@@ -256,9 +256,10 @@ export function renderLegacyHome(options: {
             <span class="channel-group-tag">${escapeHtml(ch.group)}</span>
             <span style="font-size:11px;color:#aaa;">${escapeHtml(ch.resolution || 'HD')} / ${escapeHtml(ch.format.toUpperCase())}</span>
           </div>
-          <div style="margin-top:4px;">
-            <a class="btn" style="background-color:#b33939;padding:3px 6px;" href="/open/${encodeURIComponent(ch.id)}">[ Mở CorePlayer ]</a>
-            <a class="btn" style="padding:3px 6px;" href="/legacy/channel/${encodeURIComponent(ch.id)}">[ Chi tiết ]</a>
+          <div style="margin-top:5px;">
+            <a class="btn" style="background-color:#b33939;padding:4px 7px;font-weight:bold;" href="/open/${encodeURIComponent(ch.id)}">&#9654; Mở E72 (320x240)</a>
+            <a class="btn" style="background-color:#1e7e34;padding:4px 7px;" href="/api/channel/${encodeURIComponent(ch.id)}/coreplayer.m3u">&#128190; Tải M3U</a>
+            <a class="btn" style="padding:4px 7px;" href="/legacy/channel/${encodeURIComponent(ch.id)}">Chi tiết</a>
           </div>
         </li>
       `;
@@ -296,6 +297,15 @@ ${LEGACY_CSS}
   <div class="header">
     <h1>MY IPTV - S60 / E72</h1>
     <div style="font-size:11px;color:#ddd;">Tương thích CorePlayer &amp; Symbian 3rd Ed</div>
+  </div>
+
+  <!-- TẢI TOÀN BỘ DANH SÁCH CHO NOKIA E72 -->
+  <div class="box" style="text-align:center;background:#0d2818;border-color:#1e7e34;">
+    <strong style="color:#52b788;font-size:13px;">&#128190; DANH SÁCH TOÀN BỘ KÊNH CHO NOKIA E72:</strong>
+    <p style="font-size:11px;margin:4px 0 8px 0;color:#c7f9cc;">Tải 1 file .m3u duy nhất lưu vào thẻ nhớ điện thoại để xem tất cả kênh (Đã nén chuẩn QVGA 320x240, không lỗi BOM):</p>
+    <a class="btn" style="background:#2d6a4f;border:1px solid #52b788;color:#fff;display:inline-block;padding:6px 12px;font-weight:bold;text-decoration:none;" href="/api/channels/e72.m3u">
+      &#11015; TẢI FILE M3U TẤT CẢ KÊNH CHO E72
+    </a>
   </div>
 
   <!-- DROPDOWN & TÌM KIẾM CHO NOKIA E72 -->
@@ -340,9 +350,10 @@ ${LEGACY_CSS}
   ${totalPages > 1 ? paginationHtml : ''}
 
   <div class="box" style="margin-top:10px;">
-    <strong>Hướng dẫn Nokia E72:</strong>
-    <div class="guide-step">&#8226; Chọn kênh và bấm <b>[ Mở CorePlayer ]</b>.</div>
-    <div class="guide-step">&#8226; Hoặc copy URL stream dán vào CorePlayer &gt; Open URL.</div>
+    <strong>Hướng dẫn xem trên Nokia E72:</strong>
+    <div class="guide-step">&#8226; <b>Cách 1 (Nhanh nhất):</b> Bấm nút <b>[ Mở E72 (320x240) ]</b> trên từng kênh. Trình duyệt sẽ chuyển hướng mở trực tiếp vào CorePlayer.</div>
+    <div class="guide-step">&#8226; <b>Cách 2:</b> Bấm <b>[ Tải M3U ]</b> lưu vào thẻ nhớ E:, mở CorePlayer chọn <b>Menu &gt; Open File</b> chọn tệp vừa tải.</div>
+    <div class="guide-step">&#8226; <b>Cách 3:</b> Nhấn vào kênh xem chi tiết &gt; copy link luồng MPEG-TS dán vào CorePlayer &gt; Open URL.</div>
   </div>
 
   <div class="footer">
@@ -382,24 +393,28 @@ ${LEGACY_CSS}
   </div>
 
   <div class="box" style="text-align:center;">
-    <a class="btn-coreplayer" href="${directOpenUrl}">
-      &#9654; MỞ BẰNG COREPLAYER
+    <a class="btn-coreplayer" style="background:#b33939;border:1px solid #ff6b6b;color:#fff;display:block;margin:6px auto;width:90%;padding:10px 8px;text-decoration:none;font-weight:bold;font-size:13px;" href="${directOpenUrl}">
+      &#9654; XEM TRÊN E72 / COREPLAYER (QVGA 320x240 - MƯỢT NHẤT)
     </a>
 
-    <a class="btn" style="background:#1e7e34;border:1px solid #28a745;color:#fff;display:block;margin:6px auto;width:85%;padding:8px 10px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u">
+    <a class="btn" style="background:#1e7e34;border:1px solid #28a745;color:#fff;display:block;margin:6px auto;width:90%;padding:8px 8px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u">
       &#128190; TẢI FILE .M3U CHO COREPLAYER (KHÔNG LỖI BOM)
     </a>
 
-    <a class="btn" style="background:#0369a1;border:1px solid #0284c7;color:#fff;display:block;margin:6px auto;width:85%;padding:8px 10px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/live.ts">
-      &#9654; MỞ LUỒNG MPEG-TS (.TS) TRỰC TIẾP
+    <a class="btn" style="background:#0369a1;border:1px solid #0284c7;color:#fff;display:block;margin:6px auto;width:90%;padding:8px 8px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/e72.ts">
+      &#9654; PHÁT TRỰC TIẾP LUỒNG E72 (.TS)
     </a>
 
-    <a class="btn" style="background:#ea580c;border:1px solid #f97316;color:#fff;display:block;margin:6px auto;width:85%;padding:8px 10px;text-decoration:none;font-weight:bold;" href="/open/${encodeURIComponent(channel.id)}?player=vlc">
-      &#9654; XEM TRÊN VLC PLAYER (CHO ĐIỆN THOẠI)
+    <a class="btn" style="background:#4b5563;border:1px solid #6b7280;color:#fff;display:block;margin:6px auto;width:90%;padding:6px 8px;text-decoration:none;font-size:11px;" href="/api/channel/${encodeURIComponent(channel.id)}/live.ts">
+      &#9654; Mở Luồng MPEG-TS Gốc (Không Nén)
     </a>
 
-    <a class="btn-stream" href="${escapeHtml(directStreamUrl)}">
-      &#9654; MỞ STREAM GỐC (HTTP)
+    <a class="btn" style="background:#ea580c;border:1px solid #f97316;color:#fff;display:block;margin:6px auto;width:90%;padding:8px 8px;text-decoration:none;font-weight:bold;" href="/open/${encodeURIComponent(channel.id)}?player=vlc">
+      &#128241; XEM TRÊN VLC PLAYER (CHO SMARTPHONE)
+    </a>
+
+    <a class="btn-stream" style="display:block;margin:6px auto;width:90%;" href="${escapeHtml(directStreamUrl)}">
+      Mở Stream HLS Gốc (Trình duyệt)
     </a>
 
     <div style="margin: 8px 0;">
@@ -408,16 +423,23 @@ ${LEGACY_CSS}
   </div>
 
   <div class="box">
-    <strong>URL MPEG-TS CHO COREPLAYER (Nhấn giữ để copy):</strong>
-    <div class="url-box">/api/channel/${encodeURIComponent(channel.id)}/live.ts</div>
-    <textarea rows="2" style="width:96%;font-size:11px;background:#111;color:#0f6;border:1px solid #444;" readonly="readonly">/api/channel/${encodeURIComponent(channel.id)}/live.ts</textarea>
+    <strong style="color:#52b788;">1. LINK STREAM QVGA CHO NOKIA E72 (320x240):</strong>
+    <p style="font-size:11px;margin:2px 0 4px 0;color:#bbb;">Nhấn giữ để chép link hoặc dán vào CorePlayer &gt; Open URL:</p>
+    <div class="url-box">/api/channel/${encodeURIComponent(channel.id)}/e72.ts</div>
+    <textarea rows="2" style="width:96%;font-size:11px;background:#111;color:#0f6;border:1px solid #444;" readonly="readonly">/api/channel/${encodeURIComponent(channel.id)}/e72.ts</textarea>
   </div>
 
   <div class="box">
-    <strong style="color:#f59e0b;">XỬ LÝ LỖI COREPLAYER KHÔNG MỞ ĐƯỢC:</strong>
-    <div class="guide-step">&#8226; <b>Nguyên nhân:</b> CorePlayer không hỗ trợ định dạng HLS (.m3u8) hiện đại và bị lỗi cú pháp nếu tệp .m3u chứa mã BOM.</div>
-    <div class="guide-step">&#8226; <b>Cách sửa:</b> Nhấn nút <b>[ TẢI FILE .M3U CHO COREPLAYER ]</b> ở trên (đã loại bỏ mã BOM và nối trực tiếp luồng MPEG-TS .ts).</div>
-    <div class="guide-step">&#8226; <b>Khuyên dùng trên điện thoại:</b> Nếu dùng điện thoại Android hoặc iPhone, hãy tải ứng dụng <b>VLC for Mobile</b> và nhấn <b>[ XEM TRÊN VLC PLAYER ]</b> để xem mượt nhất!</div>
+    <strong>2. LINK MPEG-TS GỐC:</strong>
+    <div class="url-box">/api/channel/${encodeURIComponent(channel.id)}/live.ts</div>
+  </div>
+
+  <div class="box">
+    <strong style="color:#f59e0b;">HƯỚNG DẪN XEM TRÊN NOKIA E72 &amp; COREPLAYER:</strong>
+    <div class="guide-step">&#8226; <b>Cách 1:</b> Nhấn nút đỏ <b>[ XEM TRÊN E72 / COREPLAYER ]</b> ở trên. Máy sẽ tải file liên kết và tự khởi động CorePlayer.</div>
+    <div class="guide-step">&#8226; <b>Cách 2 (Mở trực tiếp URL):</b> Mở CorePlayer trên E72 &gt; <b>Menu &gt; Open URL</b> &gt; nhập link luồng <b>/api/channel/${encodeURIComponent(channel.id)}/e72.ts</b> (kèm địa chỉ IP máy chủ).</div>
+    <div class="guide-step">&#8226; <b>Cách 3 (Mở bằng file .m3u):</b> Bấm nút xanh <b>[ TẢI FILE .M3U ]</b> lưu vào thẻ nhớ &gt; Trong CorePlayer chọn <b>Menu &gt; Open File</b> &gt; chọn file vừa tải. Tệp này đã được xử lý <b>loại bỏ mã BOM UTF-8</b> và dùng chuẩn CRLF nên CorePlayer mở được 100%.</div>
+    <div class="guide-step">&#8226; <b>Lưu ý kỹ thuật:</b> Luồng E72 được chuyển mã trực tiếp về chuẩn <b>320x240 H.264 Baseline L1.3 + AAC 64k</b> phù hợp tuyệt đối với chip ARM11 600MHz và RAM 128MB của E72, tránh tình trạng giật lag hoặc báo lỗi không đủ bộ nhớ.</div>
   </div>
 
   <div class="box">
