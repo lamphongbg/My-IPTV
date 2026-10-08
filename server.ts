@@ -58,8 +58,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Health check endpoint (Render standard)
-app.get('/health', async (_req: Request, res: Response) => {
+// Health check endpoint (Render standard: supports both /health and /healthz)
+app.get(['/health', '/healthz'], async (_req: Request, res: Response) => {
   try {
     const channels = await getAllChannels();
     const groups = await getAllGroups();

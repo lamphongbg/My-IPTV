@@ -1,6 +1,7 @@
 import React from 'react';
 import { Channel } from '../types/iptv';
-import { Play, Star, Info, ExternalLink } from 'lucide-react';
+import { isNokiaLightweightBrowser, getVlcLaunchUrl, launchVlcPlayer } from '../utils/deviceHelper';
+import { Play, Star, Info, Smartphone } from 'lucide-react';
 
 interface ChannelCardProps {
   channel: Channel;
@@ -10,6 +11,7 @@ interface ChannelCardProps {
   onPlay?: (channel: Channel, e: React.MouseEvent) => void;
   onToggleFavorite: (channelId: string, e: React.MouseEvent) => void;
   onOpenDetails: (channel: Channel, e: React.MouseEvent) => void;
+  isNokiaLightweight?: boolean;
 }
 
 export const ChannelCard: React.FC<ChannelCardProps> = ({
@@ -20,7 +22,9 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
   onPlay,
   onToggleFavorite,
   onOpenDetails,
+  isNokiaLightweight,
 }) => {
+  const isNokia = isNokiaLightweight ?? isNokiaLightweightBrowser();
   return (
     <div
       onClick={() => onSelect(channel)}
@@ -88,19 +92,33 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
             type="button"
             onClick={(e) => onOpenDetails(channel, e)}
             className="p-1 hover:text-white rounded hover:bg-neutral-800 transition"
-            title="Xem chi tiết & link CorePlayer"
+            title={isNokia ? "Xem chi tiết & link CorePlayer" : "Xem chi tiết & link phát"}
           >
             <Info className="w-3.5 h-3.5" />
           </button>
 
-          <a
-            href={`/open/${channel.id}`}
-            onClick={(e) => e.stopPropagation()}
-            className="p-1 text-rose-400 hover:text-rose-300 rounded hover:bg-rose-950/40 transition"
-            title="Mở bằng CorePlayer"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+          {isNokia ? (
+            <a
+              href={`/open/${channel.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="p-1 text-rose-400 hover:text-rose-300 rounded hover:bg-rose-950/40 transition"
+              title="Tự động khởi chạy CorePlayer (Nokia E72)"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+            </a>
+          ) : (
+            <a
+              href={getVlcLaunchUrl(channel.stream_url)}
+              onClick={(e) => {
+                e.stopPropagation();
+                launchVlcPlayer(channel.stream_url, channel.id);
+              }}
+              className="p-1 text-orange-400 hover:text-orange-300 rounded hover:bg-orange-950/40 transition"
+              title="Xem trên VLC player (tự động mở ứng dụng)"
+            >
+              <Play className="w-3.5 h-3.5 fill-orange-400/20" />
+            </a>
+          )}
 
           <button
             type="button"

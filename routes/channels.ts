@@ -158,4 +158,64 @@ router.get(['/playlist.m3u', '/data/channels.m3u'], async (_req: Request, res: R
   }
 });
 
+// Helper to generate safe ASCII filenames for legacy Symbian S60 FAT32 and modern browsers
+function sanitizeM3uFilename(name: string, fallback: string = 'channel'): string {
+  const ascii = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .replace(/[^a-zA-Z0-9_\-]/g, '_')
+    .replace(/_+/g, '_')
+    .trim()
+    .slice(0, 32);
+  return ascii || fallback;
+}
+
+// Export single-channel M3U / M3U8 playlist file for VLC Media Player and Nokia CorePlayer
+router.get(
+  [
+    '/api/channel/:id/vlc.m3u',
+    '/api/channel/:id/vlc.m3u8',
+    '/api/channel/:id/stream.m3u',
+    '/api/channel/:id/stream.m3u8',
+    '/api/channel/:id/coreplayer.m3u',
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const channel = await getChannelById(req.params.id);
+      if (!channel) {
+        return res.status(404).send('#EXTM3U\r\n# Kênh không tồn tại\r\n');
+      }
+      const isM3u8 = req.path.endsWith('.m3u8');
+      const isCorePlayer = req.path.includes('coreplayer');
+      const safeAsciiName = sanitizeM3uFilename(channel.name, `channel_${channel.id}`);
+      const cleanDisplayName = channel.name.replace(/["\r\n]/g, '').trim();
+
+      // CRLF (\r\n) is strictly required by Windows media parsers and VLC playlist engine
+      const ext = isM3u8 ? 'm3u8' : 'm3u';
+      const m3uBody = `#EXTM3U\r\n#EXTINF:-1 tvg-id="${channel.tvg_id || channel.id}" tvg-name="${cleanDisplayName}" tvg-logo="${channel.logo || ''}" group-title="${channel.group || 'IPTV'}",${cleanDisplayName}\r\n${channel.stream_url}\r\n`;
+
+      // UTF-8 BOM (\uFEFF) ensures Windows, VLC, and text editors correctly identify UTF-8
+      const content = '\uFEFF' + m3uBody;
+
+      const mimeType = isM3u8
+        ? 'application/vnd.apple.mpegurl; charset=utf-8'
+        : 'audio/x-mpegurl; charset=utf-8';
+
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader(
+        'Content-Disposition',
+        `${isCorePlayer ? 'inline' : 'attachment'}; filename="${safeAsciiName}.${ext}"`
+      );
+      res.send(Buffer.from(content, 'utf-8'));
+    } catch (err: any) {
+      res.status(500).send('#EXTM3U\r\n# Error generating channel playlist\r\n');
+    }
+  }
+);
+
 export default router;

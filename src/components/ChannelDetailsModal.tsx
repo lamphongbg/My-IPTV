@@ -1,19 +1,24 @@
 import React, { useState } from 'react';
 import { Channel } from '../types/iptv';
-import { X, Copy, Check, ExternalLink, Play, Tv, ShieldCheck, Smartphone } from 'lucide-react';
+import { isNokiaLightweightBrowser, getVlcLaunchUrl, launchVlcPlayer } from '../utils/deviceHelper';
+import { X, Copy, Check, ExternalLink, Play, Tv, ShieldCheck, Smartphone, Download, ChevronRight } from 'lucide-react';
 
 interface ChannelDetailsModalProps {
   channel: Channel | null;
   onClose: () => void;
   onPlayChannel: (channel: Channel) => void;
+  isNokiaLightweight?: boolean;
 }
 
 export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
   channel,
   onClose,
   onPlayChannel,
+  isNokiaLightweight,
 }) => {
+  const isNokia = isNokiaLightweight ?? isNokiaLightweightBrowser();
   const [copied, setCopied] = useState<boolean>(false);
+  const [showNokiaGuide, setShowNokiaGuide] = useState<boolean>(isNokia);
 
   if (!channel) return null;
 
@@ -87,24 +92,57 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
               MỞ BẰNG ỨNG DỤNG BÊN NGOÀI
             </label>
             <div className="grid grid-cols-2 gap-2 text-xs">
+              {/* Primary External App Button: CorePlayer on Nokia E72, VLC on other browsers */}
+              {isNokia ? (
+                <a
+                  href={corePlayerLink}
+                  className="p-2.5 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-800/50 text-rose-200 rounded-lg font-medium flex items-center justify-between transition"
+                  title="Tự động khởi chạy CorePlayer trên Nokia E72"
+                >
+                  <div className="flex items-center gap-2">
+                    <Smartphone className="w-4 h-4 text-rose-400" />
+                    <span>CorePlayer / S60</span>
+                  </div>
+                  <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                </a>
+              ) : (
+                <a
+                  href={getVlcLaunchUrl(channel.stream_url)}
+                  onClick={() => launchVlcPlayer(channel.stream_url, channel.id)}
+                  className="p-2.5 bg-orange-950/40 hover:bg-orange-900/50 border border-orange-800/50 text-orange-200 rounded-lg font-medium flex items-center justify-between transition"
+                  title="Tự động mở trên ứng dụng VLC Player nếu đã cài đặt"
+                >
+                  <div className="flex items-center gap-2">
+                    <Play className="w-4 h-4 text-orange-400 fill-orange-400/20" />
+                    <span>Xem trên VLC player</span>
+                  </div>
+                  <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                </a>
+              )}
+
+              {/* Download M3U8 / M3U for VLC */}
               <a
-                href={corePlayerLink}
-                className="p-2.5 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-800/50 text-rose-200 rounded-lg font-medium flex items-center justify-between transition"
+                href={`/api/channel/${encodeURIComponent(channel.id)}/vlc.m3u8`}
+                download={`${channel.name}.m3u8`}
+                className="p-2.5 bg-neutral-800/80 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 rounded-lg font-medium flex items-center justify-between transition"
+                title="Tải file .m3u8 chuẩn UTF-8 tốt nhất cho VLC"
               >
                 <div className="flex items-center gap-2">
-                  <Smartphone className="w-4 h-4 text-rose-400" />
-                  <span>CorePlayer / S60</span>
+                  <Download className="w-4 h-4 text-amber-400" />
+                  <span>Tải .M3U8 cho VLC (Tốt nhất)</span>
                 </div>
                 <ExternalLink className="w-3.5 h-3.5 opacity-70" />
               </a>
 
               <a
-                href={`vlc://${channel.stream_url}`}
-                className="p-2.5 bg-orange-950/40 hover:bg-orange-900/50 border border-orange-800/50 text-orange-200 rounded-lg font-medium flex items-center justify-between transition"
+                href={`/api/channel/${encodeURIComponent(channel.id)}/vlc.m3u`}
+                download={`${channel.name}.m3u`}
+                className="p-2.5 bg-neutral-800/80 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 rounded-lg font-medium flex items-center justify-between transition"
+                title="Tải file .m3u truyền thống"
               >
                 <div className="flex items-center gap-2">
-                  <Play className="w-4 h-4 text-orange-400" />
-                  <span>VLC Media Player</span>
+                  <Download className="w-4 h-4 text-orange-400" />
+                  <span>Tải .M3U cho VLC</span>
                 </div>
                 <ExternalLink className="w-3.5 h-3.5 opacity-70" />
               </a>
@@ -135,19 +173,51 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
             </div>
           </div>
 
-          {/* CorePlayer on Nokia E72 Tutorial */}
-          <div className="p-3.5 bg-neutral-950 border border-neutral-800 rounded-xl space-y-2 text-xs">
-            <div className="flex items-center gap-2 text-amber-400 font-semibold">
-              <Smartphone className="w-4 h-4" />
-              <span>Hướng dẫn xem trên Nokia E72 (Symbian S60)</span>
+          {/* CorePlayer on Nokia E72 Tutorial / Toggle */}
+          {isNokia ? (
+            <div className="p-3.5 bg-neutral-950 border border-neutral-800 rounded-xl space-y-2 text-xs">
+              <div className="flex items-center gap-2 text-amber-400 font-semibold">
+                <Smartphone className="w-4 h-4" />
+                <span>Hướng dẫn xem trên Nokia E72 (Symbian S60)</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-neutral-300 text-[11px] leading-relaxed">
+                <li>Mở trình duyệt mặc định trên Nokia E72, truy cập trang web (hệ thống sẽ tự nhận diện E72).</li>
+                <li>Chọn kênh và bấm <strong className="text-white">[ Mở CorePlayer ]</strong> hoặc copy URL trên.</li>
+                <li>Trong <strong>CorePlayer</strong>: Bấm <strong>Menu &gt; Open URL...</strong></li>
+                <li>Dán (Paste) đường dẫn stream và bấm <strong>OK</strong> để phát.</li>
+              </ol>
             </div>
-            <ol className="list-decimal list-inside space-y-1 text-neutral-300 text-[11px] leading-relaxed">
-              <li>Mở trình duyệt mặc định trên Nokia E72, truy cập trang web (hệ thống sẽ tự nhận diện E72).</li>
-              <li>Chọn kênh và bấm <strong className="text-white">[ Mở CorePlayer ]</strong> hoặc copy URL trên.</li>
-              <li>Trong <strong>CorePlayer</strong>: Bấm <strong>Menu &gt; Open URL...</strong></li>
-              <li>Dán (Paste) đường dẫn stream và bấm <strong>OK</strong> để phát.</li>
-            </ol>
-          </div>
+          ) : (
+            <div className="border border-neutral-800 rounded-xl overflow-hidden bg-neutral-950/40">
+              <button
+                type="button"
+                onClick={() => setShowNokiaGuide(!showNokiaGuide)}
+                className="w-full p-3 flex items-center justify-between text-xs text-neutral-400 hover:text-neutral-200 transition text-left"
+              >
+                <div className="flex items-center gap-2 text-neutral-300 font-medium">
+                  <Smartphone className="w-3.5 h-3.5 text-neutral-400" />
+                  <span>Dành cho Nokia E72 (Symbian S60 / CorePlayer)</span>
+                </div>
+                <div className="flex items-center gap-1 text-[11px] text-amber-400">
+                  <span>{showNokiaGuide ? 'Ẩn' : 'Xem hướng dẫn'}</span>
+                  <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showNokiaGuide ? 'rotate-90' : ''}`} />
+                </div>
+              </button>
+
+              {showNokiaGuide && (
+                <div className="px-3.5 pb-3.5 pt-1 space-y-2 text-xs border-t border-neutral-800/60 bg-neutral-950">
+                  <p className="text-[11px] text-neutral-400">
+                    Để kích hoạt giao diện siêu nhẹ và nút CorePlayer trực tiếp trên Nokia E72, hãy truy cập <a href="/legacy" className="text-amber-400 underline">bản Nokia E72 (/legacy)</a>.
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1 text-neutral-300 text-[11px] leading-relaxed">
+                    <li>Trên Nokia E72: Khởi động <strong>CorePlayer</strong>.</li>
+                    <li>Chọn <strong>Menu &gt; Open URL...</strong></li>
+                    <li>Dán stream URL: <code className="text-emerald-400">{channel.stream_url}</code></li>
+                  </ol>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Technical Specs */}
           <div className="p-3.5 bg-neutral-950 border border-neutral-800 rounded-xl space-y-2">

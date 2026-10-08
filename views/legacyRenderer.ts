@@ -386,6 +386,10 @@ ${LEGACY_CSS}
       &#9654; MỞ BẰNG COREPLAYER
     </a>
 
+    <a class="btn" style="background:#1e7e34;border:1px solid #28a745;color:#fff;display:block;margin:6px auto;width:80%;padding:8px 10px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u">
+      &#9654; TỰ ĐỘNG KHỞI CHẠY COREPLAYER (.M3U)
+    </a>
+
     <a class="btn-stream" href="${escapeHtml(directStreamUrl)}">
       &#9654; MỞ STREAM TRỰC TIẾP (HTTP)
     </a>

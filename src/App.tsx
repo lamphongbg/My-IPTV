@@ -7,6 +7,7 @@ import { NokiaSimulatorModal } from './components/NokiaSimulatorModal';
 import { M3uImporterModal } from './components/M3uImporterModal';
 import { CategoryScrollNav } from './components/CategoryScrollNav';
 import { AdminPortal } from './components/AdminPortal';
+import { isNokiaLightweightBrowser } from './utils/deviceHelper';
 import {
   Tv,
   Search,
@@ -49,6 +50,9 @@ export default function App() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
+
+  // Determine whether current environment is the lightweight browser for Nokia E72
+  const isNokiaLightweight = isNokiaLightweightBrowser(deviceInfo);
 
   // Modals
   const [detailChannel, setDetailChannel] = useState<Channel | null>(null);
@@ -303,7 +307,7 @@ export default function App() {
                 </span>
               </div>
               <p className="text-[11px] text-neutral-400">
-                {totalSystemChannels.toLocaleString()} kênh &bull; CorePlayer &bull; Modern Web
+                {totalSystemChannels.toLocaleString()} kênh &bull; {isNokiaLightweight ? 'CorePlayer S60' : 'VLC Player'} &bull; Modern Web
               </p>
             </div>
           </div>
@@ -422,6 +426,7 @@ export default function App() {
               channel={selectedChannel}
               playTrigger={playTrigger}
               onOpenDetails={(ch) => handleOpenDetails(ch)}
+              isNokiaLightweight={isNokiaLightweight}
             />
 
             {/* Quick Hub: CorePlayer on Nokia E72 Banner */}
@@ -580,6 +585,7 @@ export default function App() {
                         onPlay={handleSelectChannel}
                         onToggleFavorite={handleToggleFavorite}
                         onOpenDetails={(ch, e) => handleOpenDetails(ch, e)}
+                        isNokiaLightweight={isNokiaLightweight}
                       />
                     ))}
                   </div>
@@ -641,6 +647,7 @@ export default function App() {
         channel={detailChannel}
         onClose={() => setDetailChannel(null)}
         onPlayChannel={(ch) => handleSelectChannel(ch)}
+        isNokiaLightweight={isNokiaLightweight}
       />
 
       <NokiaSimulatorModal
