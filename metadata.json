@@ -1,0 +1,8 @@
+{
+  "name": "Remix Nokia E72 \u0026 Modern IPTV Web Viewer",
+  "description": "Personal IPTV Web streaming app optimized for legacy Nokia E72 (Symbian S60 / CorePlayer) and modern mobile \u0026 desktop devices.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
