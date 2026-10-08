@@ -89,6 +89,18 @@ app.get('/api/device-info', (req: Request, res: Response) => {
   });
 });
 
+// Downloadable E72 Local HTTP Bridge script
+app.get(['/api/tools/e72-relay.py', '/e72-relay.py'], (_req: Request, res: Response) => {
+  const scriptPath = path.resolve(__dirname, 'e72-relay.py');
+  if (fs.existsSync(scriptPath)) {
+    res.setHeader('Content-Type', 'text/x-python; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="e72-relay.py"');
+    res.sendFile(scriptPath);
+  } else {
+    res.status(404).send('Relay script not found');
+  }
+});
+
 // Mount IPTV routes & Admin routes
 app.use(channelsRouter);
 app.use(playerRouter);
@@ -127,6 +139,8 @@ async function handleLegacyHome(req: Request, res: Response) {
 
   const groups = await getAllGroups();
 
+  const host = (req.query.host as string) || (req.query.ip as string) || '';
+
   const html = renderLegacyHome({
     channels: paginatedChannels,
     totalChannels,
@@ -135,6 +149,7 @@ async function handleLegacyHome(req: Request, res: Response) {
     currentGroup: group,
     groups,
     searchQuery: query,
+    host,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -148,7 +163,8 @@ async function handleLegacyChannel(req: Request, res: Response) {
     return res.send(renderLegacyNotFound());
   }
 
-  const html = renderLegacyChannel(channel);
+  const host = (req.query.host as string) || (req.query.ip as string) || '';
+  const html = renderLegacyChannel(channel, host);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
 }

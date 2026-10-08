@@ -125,8 +125,13 @@ router.get(
         req.query.profile === 'e72';
 
       if (isCorePlayer) {
-        const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
-        const host = req.get('host') || '127.0.0.1:3000';
+        // CorePlayer on Nokia E72 (Symbian S60) CANNOT negotiate modern TLS 1.2/1.3 handshakes!
+        // Connecting to HTTPS causes Symbian error: "HTTPS hỗ trợ các thỏa thuận không được".
+        // Therefore, CorePlayer playlists must strictly use plain 'http://' and support custom LAN IP.
+        const customHost = (req.query.host as string) || (req.query.ip as string) || (req.headers['x-custom-host'] as string);
+        const host = customHost || req.get('host') || '127.0.0.1:3000';
+        const proto = (req.query.proto as string) || 'http'; // Force plain HTTP for CorePlayer
+
         let body = '#EXTM3U\r\n';
         for (const ch of channels) {
           const safeName = sanitizeM3uFilename(ch.name, `ch_${ch.id}`);
@@ -307,8 +312,12 @@ router.get(
       const safeAsciiName = sanitizeM3uFilename(channel.name, `channel_${channel.id}`);
       const cleanDisplayName = channel.name.replace(/["\r\n]/g, '').trim();
 
-      const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
-      const host = req.get('host') || '127.0.0.1:3000';
+      const customHost = (req.query.host as string) || (req.query.ip as string) || (req.headers['x-custom-host'] as string);
+      const host = customHost || req.get('host') || '127.0.0.1:3000';
+      // CorePlayer on Symbian S60 requires plain HTTP ('http://'). HTTPS causes "HTTPS hỗ trợ các thỏa thuận không được".
+      const proto = isCorePlayer
+        ? ((req.query.proto as string) || 'http')
+        : ((req.headers['x-forwarded-proto'] as string) || req.protocol || 'http');
       const e72TsUrl = `${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts`;
       const liveTsUrl = `${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
 
@@ -318,10 +327,14 @@ router.get(
         // STRICT CorePlayer compatibility for Nokia E72:
         // 1. NO UTF-8 BOM (\uFEFF) - BOM corrupts CorePlayer's parser causing "Error opening file"
         // 2. Simple EXTINF without quotes or unsupported IPTV metadata tags
-        // 3. Absolute full HTTP link to E72 QVGA stream (CorePlayer requires absolute URL when opened from SD card)
-        // 4. Secondary entry for direct unscaled MPEG-TS
-        // 5. Raw stream URL as tertiary fallback
-        m3uBody = `#EXTM3U\r\n#EXTINF:0,${safeAsciiName} (E72 QVGA 320x240)\r\n${e72TsUrl}\r\n#EXTINF:0,${safeAsciiName} (MPEG-TS Goc)\r\n${liveTsUrl}\r\n#EXTINF:0,${safeAsciiName} (Stream Goc)\r\n${channel.stream_url}\r\n`;
+        // 3. Absolute full plain HTTP link to E72 QVGA stream (CorePlayer requires absolute URL when opened from SD card)
+        // 4. Secondary entry for direct unscaled MPEG-TS via HTTP
+        // 5. DO NOT include https:// streams - Symbian TLS negotiation failure triggers "HTTPS hỗ trợ các thỏa thuận không được"
+        let entries = `#EXTM3U\r\n#EXTINF:0,${safeAsciiName} (E72 QVGA 320x240)\r\n${e72TsUrl}\r\n#EXTINF:0,${safeAsciiName} (MPEG-TS Goc)\r\n${liveTsUrl}\r\n`;
+        if (channel.stream_url && channel.stream_url.startsWith('http://')) {
+          entries += `#EXTINF:0,${safeAsciiName} (Stream Goc HTTP)\r\n${channel.stream_url}\r\n`;
+        }
+        m3uBody = entries;
       } else {
         // Standard VLC / Modern IPTV playlist
         const ext = isM3u8 ? 'm3u8' : 'm3u';

@@ -255,11 +255,15 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
 
               {showNokiaGuide && (
                 <div className="px-3.5 pb-3.5 pt-1 space-y-2.5 text-xs border-t border-neutral-800/60 bg-neutral-950">
+                  <div className="p-2.5 bg-rose-950/40 border border-rose-800/50 rounded-lg text-rose-200 text-[11px] leading-relaxed">
+                    <p className="font-semibold text-rose-300 mb-1">⚠️ Sửa lỗi: "HTTPS hỗ trợ các thỏa thuận không được"</p>
+                    <p>• <strong>Nguyên nhân:</strong> CorePlayer v1.3.6 trên Nokia E72 (Symbian S60) chỉ hỗ trợ <strong>HTTP thường</strong>. CorePlayer không hỗ trợ chuẩn mã hóa TLS 1.2/1.3 và chứng chỉ bảo mật của HTTPS hiện đại. Khi mở link <code>https://</code>, điện thoại sẽ báo lỗi này.</p>
+                    <p className="mt-1">• <strong>Khắc phục:</strong> Nút <em>"Tải .M3U CorePlayer"</em> ở trên đã được cấu hình tự động lọc sạch HTTPS và xuất chuẩn HTTP thuần túy.</p>
+                    <p className="mt-1">• <strong>Kết nối qua Wi-Fi:</strong> Chạy máy chủ trên máy tính trong cùng mạng Wi-Fi, mở trình duyệt E72 vào <code>http://[IP-Máy-Tính]:3000/legacy</code> để xem trực tiếp qua HTTP cực kỳ mượt mà.</p>
+                  </div>
                   <div className="p-2.5 bg-amber-950/30 border border-amber-800/40 rounded-lg text-amber-200 text-[11px] leading-relaxed">
-                    <p className="font-semibold text-amber-300 mb-1">💡 Tại sao CorePlayer trên điện thoại báo không mở được file?</p>
-                    <p>• <strong>Nguyên nhân:</strong> CorePlayer (phần mềm cũ từ Symbian S60) không hỗ trợ định dạng HLS (.m3u8) hiện đại và bị lỗi khi file .m3u có mã BOM UTF-8.</p>
-                    <p className="mt-1">• <strong>Khuyên dùng cho điện thoại (Android / iOS):</strong> Sử dụng <strong>VLC Media Player</strong> (bấm nút <em>"Xem trên VLC player"</em> ở trên). VLC hỗ trợ 100% các luồng trực tiếp mà không cần cấu hình.</p>
-                    <p className="mt-1">• <strong>Nếu vẫn muốn dùng CorePlayer:</strong> Bấm nút <em>"Tải .M3U CorePlayer (Đã sửa lỗi)"</em> ở trên để nhận file chuẩn định dạng luồng MPEG-TS.</p>
+                    <p className="font-semibold text-amber-300 mb-1">💡 Khuyên dùng cho điện thoại thông minh (Android / iOS):</p>
+                    <p>Sử dụng <strong>VLC Media Player</strong> (bấm nút <em>"Xem trên VLC player"</em> ở trên). VLC hỗ trợ 100% các luồng HLS/MPEG-TS mà không cần cấu hình.</p>
                   </div>
                 </div>
               )}

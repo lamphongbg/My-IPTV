@@ -218,8 +218,9 @@ export function renderLegacyHome(options: {
   currentGroup: string;
   groups: string[];
   searchQuery?: string;
+  host?: string;
 }): string {
-  const { channels, totalChannels, currentPage, totalPages, currentGroup, groups, searchQuery = '' } = options;
+  const { channels, totalChannels, currentPage, totalPages, currentGroup, groups, searchQuery = '', host = '' } = options;
 
   // Sort groups smartly: Put prominent standard groups first, then alphabetize the rest
   const priorityGroups = ['VTV', 'VTC', 'HTV', 'Tin tức', 'Thể thao', 'Giải trí', 'Khoa học', 'Quốc tế', 'Phim', 'Movies', 'News', 'Sports'];
@@ -239,6 +240,9 @@ export function renderLegacyHome(options: {
     optionsHtml += `<option value="${escapeHtml(g)}"${isSelected ? ' selected="selected"' : ''}>${escapeHtml(g)}</option>`;
   }
 
+  const hostQueryParam = host ? `&host=${encodeURIComponent(host)}` : '';
+  const hostParamOnly = host ? `?host=${encodeURIComponent(host)}` : '';
+
   // Channel items
   let channelItems = '';
   if (channels.length === 0) {
@@ -249,7 +253,7 @@ export function renderLegacyHome(options: {
       const indexNum = (currentPage - 1) * 10 + i + 1;
       channelItems += `
         <li class="channel-item">
-          <a class="channel-link" href="/legacy/channel/${encodeURIComponent(ch.id)}">
+          <a class="channel-link" href="/legacy/channel/${encodeURIComponent(ch.id)}${hostParamOnly}">
             ${indexNum}. ${escapeHtml(ch.name)}
           </a>
           <div>
@@ -257,9 +261,9 @@ export function renderLegacyHome(options: {
             <span style="font-size:11px;color:#aaa;">${escapeHtml(ch.resolution || 'HD')} / ${escapeHtml(ch.format.toUpperCase())}</span>
           </div>
           <div style="margin-top:5px;">
-            <a class="btn" style="background-color:#b33939;padding:4px 7px;font-weight:bold;" href="/open/${encodeURIComponent(ch.id)}">&#9654; Mở E72 (320x240)</a>
-            <a class="btn" style="background-color:#1e7e34;padding:4px 7px;" href="/api/channel/${encodeURIComponent(ch.id)}/coreplayer.m3u">&#128190; Tải M3U</a>
-            <a class="btn" style="padding:4px 7px;" href="/legacy/channel/${encodeURIComponent(ch.id)}">Chi tiết</a>
+            <a class="btn" style="background-color:#b33939;padding:4px 7px;font-weight:bold;" href="/open/${encodeURIComponent(ch.id)}${hostParamOnly}">&#9654; Mở E72 (320x240)</a>
+            <a class="btn" style="background-color:#1e7e34;padding:4px 7px;" href="/api/channel/${encodeURIComponent(ch.id)}/coreplayer.m3u${hostParamOnly}">&#128190; Tải M3U</a>
+            <a class="btn" style="padding:4px 7px;" href="/legacy/channel/${encodeURIComponent(ch.id)}${hostParamOnly}">Chi tiết</a>
           </div>
         </li>
       `;
@@ -269,11 +273,11 @@ export function renderLegacyHome(options: {
   // Pagination
   let paginationHtml = '<div class="pagination">';
   if (currentPage > 1) {
-    paginationHtml += `<a href="/legacy?page=${currentPage - 1}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}">&laquo; Trang trước</a>`;
+    paginationHtml += `<a href="/legacy?page=${currentPage - 1}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}${hostQueryParam}">&laquo; Trang trước</a>`;
   }
   paginationHtml += ` <span class="current">Trang ${currentPage}/${totalPages}</span> `;
   if (currentPage < totalPages) {
-    paginationHtml += `<a href="/legacy?page=${currentPage + 1}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}">Trang sau &raquo;</a>`;
+    paginationHtml += `<a href="/legacy?page=${currentPage + 1}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}${hostQueryParam}">Trang sau &raquo;</a>`;
   }
   paginationHtml += '</div>';
 
@@ -299,11 +303,30 @@ ${LEGACY_CSS}
     <div style="font-size:11px;color:#ddd;">Tương thích CorePlayer &amp; Symbian 3rd Ed</div>
   </div>
 
+  <!-- CẢNH BÁO VÀ HƯỚNG DẪN XỬ LÝ LỖI HTTPS TRÊN COREPLAYER -->
+  <div class="box" style="background:#3b1111;border:1px solid #ef4444;color:#fca5a5;font-size:12px;line-height:1.5;">
+    <strong style="color:#f87171;font-size:13px;">⚠️ KHẮC PHỤC LỖI "HTTPS hỗ trợ các thỏa thuận không được":</strong><br />
+    &bull; <strong>Nguyên nhân:</strong> CorePlayer v1.3.6 trên Nokia E72 chỉ hỗ trợ <strong>HTTP thường</strong>, không hỗ trợ TLS 1.2/1.3 và chứng chỉ bảo mật của HTTPS hiện đại. Khi mở link <code>https://</code>, máy sẽ báo lỗi này ngay lập tức.<br />
+    &bull; <strong>Giải pháp:</strong> Dùng link <strong>http://</strong> và kết nối qua mạng Wi-Fi nội bộ bằng cách điền IP máy tính bên dưới:
+  </div>
+
+  <!-- CẤU HÌNH IP MÁY TÍNH LAN CHO E72 -->
+  <div class="box" style="background:#111827;border:1px solid #374151;">
+    <form action="/legacy" method="GET">
+      <input type="hidden" name="group" value="${escapeHtml(currentGroup)}" />
+      <input type="hidden" name="q" value="${escapeHtml(searchQuery)}" />
+      <div class="form-label" style="color:#38bdf8;">&#128246; Cấu hình IP máy tính LAN (Wi-Fi gia đình):</div>
+      <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">Nhập IP máy tính (VD: <code>192.168.1.15:3000</code>) để tạo link HTTP chuẩn cho E72:</div>
+      <input class="input-text" type="text" name="host" value="${escapeHtml(host)}" placeholder="VD: 192.168.1.15:3000" />
+      <input class="btn-search" style="background:#0284c7;color:#fff;border-color:#0369a1;margin-top:4px;" type="submit" value="Cập Nhật IP Cho E72" />
+    </form>
+  </div>
+
   <!-- TẢI TOÀN BỘ DANH SÁCH CHO NOKIA E72 -->
   <div class="box" style="text-align:center;background:#0d2818;border-color:#1e7e34;">
     <strong style="color:#52b788;font-size:13px;">&#128190; DANH SÁCH TOÀN BỘ KÊNH CHO NOKIA E72:</strong>
-    <p style="font-size:11px;margin:4px 0 8px 0;color:#c7f9cc;">Tải 1 file .m3u duy nhất lưu vào thẻ nhớ điện thoại để xem tất cả kênh (Đã nén chuẩn QVGA 320x240, không lỗi BOM):</p>
-    <a class="btn" style="background:#2d6a4f;border:1px solid #52b788;color:#fff;display:inline-block;padding:6px 12px;font-weight:bold;text-decoration:none;" href="/api/channels/e72.m3u">
+    <p style="font-size:11px;margin:4px 0 8px 0;color:#c7f9cc;">Tải 1 file .m3u duy nhất lưu vào thẻ nhớ điện thoại để xem tất cả kênh (Đã nén chuẩn QVGA 320x240, thuần HTTP không lỗi SSL):</p>
+    <a class="btn" style="background:#2d6a4f;border:1px solid #52b788;color:#fff;display:inline-block;padding:6px 12px;font-weight:bold;text-decoration:none;" href="/api/channels/e72.m3u${hostParamOnly}">
       &#11015; TẢI FILE M3U TẤT CẢ KÊNH CHO E72
     </a>
   </div>
@@ -311,6 +334,7 @@ ${LEGACY_CSS}
   <!-- DROPDOWN & TÌM KIẾM CHO NOKIA E72 -->
   <div class="search-panel">
     <form action="/legacy" method="GET">
+      ${host ? `<input type="hidden" name="host" value="${escapeHtml(host)}" />` : ''}
       <div class="form-group">
         <label class="form-label" for="search-input">1. Tìm kiếm tên kênh:</label>
         <input class="input-text" type="text" id="search-input" name="q" value="${escapeHtml(searchQuery)}" placeholder="Nhập tên kênh (vd: VTV1, Bóng đá)..." />
@@ -329,7 +353,7 @@ ${LEGACY_CSS}
 
       ${isFiltering ? `
       <div style="text-align:center;margin-top:6px;">
-        <a href="/legacy" style="color:#ff6b6b;font-size:12px;font-weight:bold;">[ Xóa tìm kiếm / Xem tất cả kênh ]</a>
+        <a href="/legacy${hostParamOnly}" style="color:#ff6b6b;font-size:12px;font-weight:bold;">[ Xóa tìm kiếm / Xem tất cả kênh ]</a>
       </div>` : ''}
     </form>
   </div>
@@ -368,9 +392,15 @@ ${LEGACY_CSS}
 </html>`;
 }
 
-export function renderLegacyChannel(channel: Channel): string {
-  const directOpenUrl = `/open/${encodeURIComponent(channel.id)}`;
+export function renderLegacyChannel(channel: Channel, host: string = ''): string {
+  const hostParamOnly = host ? `?host=${encodeURIComponent(host)}` : '';
+  const directOpenUrl = `/open/${encodeURIComponent(channel.id)}${hostParamOnly}`;
+  const corePlayerM3uUrl = `/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u${hostParamOnly}`;
   const directStreamUrl = channel.stream_url;
+
+  const displayHost = host || '192.168.1.xxx:3000';
+  const fullE72Url = `http://${displayHost}/api/channel/${encodeURIComponent(channel.id)}/e72.ts`;
+  const fullLiveTsUrl = `http://${displayHost}/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
 
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -392,13 +422,29 @@ ${LEGACY_CSS}
     <div style="font-size:11px;color:#f4d35e;">Nhóm: ${escapeHtml(channel.group)}</div>
   </div>
 
+  <!-- CẢNH BÁO LỖI HTTPS CỦA COREPLAYER -->
+  <div class="box" style="background:#3b1111;border:1px solid #ef4444;color:#fca5a5;font-size:12px;line-height:1.5;">
+    <strong style="color:#f87171;font-size:13px;">⚠️ KHẮC PHỤC LỖI "HTTPS hỗ trợ các thỏa thuận không được":</strong><br />
+    &bull; <strong>Nguyên nhân:</strong> CorePlayer v1.3.6 trên E72 chỉ hỗ trợ <strong>HTTP thường</strong>. Máy không hỗ trợ chuẩn TLS 1.2/1.3 của HTTPS hiện đại.<br />
+    &bull; <strong>Giải pháp:</strong> Nhập IP máy tính LAN bên dưới để tạo link và file M3U thuần HTTP.
+  </div>
+
+  <!-- CẤU HÌNH IP LAN -->
+  <div class="box" style="background:#111827;border:1px solid #374151;">
+    <form action="/legacy/channel/${encodeURIComponent(channel.id)}" method="GET">
+      <div class="form-label" style="color:#38bdf8;">&#128246; Cấu hình IP máy tính LAN (Wi-Fi):</div>
+      <input class="input-text" type="text" name="host" value="${escapeHtml(host)}" placeholder="VD: 192.168.1.15:3000" />
+      <input class="btn-search" style="background:#0284c7;color:#fff;border-color:#0369a1;margin-top:4px;" type="submit" value="Cập Nhật IP Cho Kênh" />
+    </form>
+  </div>
+
   <div class="box" style="text-align:center;">
     <a class="btn-coreplayer" style="background:#b33939;border:1px solid #ff6b6b;color:#fff;display:block;margin:6px auto;width:90%;padding:10px 8px;text-decoration:none;font-weight:bold;font-size:13px;" href="${directOpenUrl}">
       &#9654; XEM TRÊN E72 / COREPLAYER (QVGA 320x240 - MƯỢT NHẤT)
     </a>
 
-    <a class="btn" style="background:#1e7e34;border:1px solid #28a745;color:#fff;display:block;margin:6px auto;width:90%;padding:8px 8px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u">
-      &#128190; TẢI FILE .M3U CHO COREPLAYER (KHÔNG LỖI BOM)
+    <a class="btn" style="background:#1e7e34;border:1px solid #28a745;color:#fff;display:block;margin:6px auto;width:90%;padding:8px 8px;text-decoration:none;font-weight:bold;" href="${corePlayerM3uUrl}">
+      &#128190; TẢI FILE .M3U CHO COREPLAYER (CHUẨN HTTP - KHÔNG LỖI SSL)
     </a>
 
     <a class="btn" style="background:#0369a1;border:1px solid #0284c7;color:#fff;display:block;margin:6px auto;width:90%;padding:8px 8px;text-decoration:none;font-weight:bold;" href="/api/channel/${encodeURIComponent(channel.id)}/e72.ts">
@@ -418,27 +464,27 @@ ${LEGACY_CSS}
     </a>
 
     <div style="margin: 8px 0;">
-      <a class="btn" href="/legacy">&laquo; QUAY LẠI DANH SÁCH</a>
+      <a class="btn" href="/legacy${hostParamOnly}">&laquo; QUAY LẠI DANH SÁCH</a>
     </div>
   </div>
 
   <div class="box">
     <strong style="color:#52b788;">1. LINK STREAM QVGA CHO NOKIA E72 (320x240):</strong>
-    <p style="font-size:11px;margin:2px 0 4px 0;color:#bbb;">Nhấn giữ để chép link hoặc dán vào CorePlayer &gt; Open URL:</p>
-    <div class="url-box">/api/channel/${encodeURIComponent(channel.id)}/e72.ts</div>
-    <textarea rows="2" style="width:96%;font-size:11px;background:#111;color:#0f6;border:1px solid #444;" readonly="readonly">/api/channel/${encodeURIComponent(channel.id)}/e72.ts</textarea>
+    <p style="font-size:11px;margin:2px 0 4px 0;color:#bbb;">Nhập link này vào CorePlayer &gt; Open URL (dùng chuẩn <strong>http://</strong>):</p>
+    <div class="url-box">${escapeHtml(fullE72Url)}</div>
+    <textarea rows="2" style="width:96%;font-size:11px;background:#111;color:#0f6;border:1px solid #444;" readonly="readonly">${escapeHtml(fullE72Url)}</textarea>
   </div>
 
   <div class="box">
     <strong>2. LINK MPEG-TS GỐC:</strong>
-    <div class="url-box">/api/channel/${encodeURIComponent(channel.id)}/live.ts</div>
+    <div class="url-box">${escapeHtml(fullLiveTsUrl)}</div>
   </div>
 
   <div class="box">
     <strong style="color:#f59e0b;">HƯỚNG DẪN XEM TRÊN NOKIA E72 &amp; COREPLAYER:</strong>
     <div class="guide-step">&#8226; <b>Cách 1:</b> Nhấn nút đỏ <b>[ XEM TRÊN E72 / COREPLAYER ]</b> ở trên. Máy sẽ tải file liên kết và tự khởi động CorePlayer.</div>
-    <div class="guide-step">&#8226; <b>Cách 2 (Mở trực tiếp URL):</b> Mở CorePlayer trên E72 &gt; <b>Menu &gt; Open URL</b> &gt; nhập link luồng <b>/api/channel/${encodeURIComponent(channel.id)}/e72.ts</b> (kèm địa chỉ IP máy chủ).</div>
-    <div class="guide-step">&#8226; <b>Cách 3 (Mở bằng file .m3u):</b> Bấm nút xanh <b>[ TẢI FILE .M3U ]</b> lưu vào thẻ nhớ &gt; Trong CorePlayer chọn <b>Menu &gt; Open File</b> &gt; chọn file vừa tải. Tệp này đã được xử lý <b>loại bỏ mã BOM UTF-8</b> và dùng chuẩn CRLF nên CorePlayer mở được 100%.</div>
+    <div class="guide-step">&#8226; <b>Cách 2 (Mở trực tiếp URL):</b> Mở CorePlayer trên E72 &gt; <b>Menu &gt; Open URL</b> &gt; nhập link luồng chuẩn HTTP: <b>${escapeHtml(fullE72Url)}</b>.</div>
+    <div class="guide-step">&#8226; <b>Cách 3 (Mở bằng file .m3u):</b> Bấm nút xanh <b>[ TẢI FILE .M3U ]</b> lưu vào thẻ nhớ &gt; Trong CorePlayer chọn <b>Menu &gt; Open File</b> &gt; chọn file vừa tải. Tệp này đã dùng chuẩn <b>CRLF, UTF-8 không BOM và link thuần HTTP</b> nên CorePlayer mở được 100%.</div>
     <div class="guide-step">&#8226; <b>Lưu ý kỹ thuật:</b> Luồng E72 được chuyển mã trực tiếp về chuẩn <b>320x240 H.264 Baseline L1.3 + AAC 64k</b> phù hợp tuyệt đối với chip ARM11 600MHz và RAM 128MB của E72, tránh tình trạng giật lag hoặc báo lỗi không đủ bộ nhớ.</div>
   </div>
 

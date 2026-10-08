@@ -156,14 +156,18 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
   }
 
   // Nokia E72 / Mobile CorePlayer Flow
-  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
-  const host = req.get('host') || '127.0.0.1:3000';
-  const targetCorePlayerM3u = `/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u`;
+  // CorePlayer on Nokia E72 (Symbian S60) CANNOT negotiate modern TLS 1.2/1.3 handshakes!
+  // If an https:// URL is loaded, CorePlayer throws: "HTTPS hỗ trợ các thỏa thuận không được".
+  // Therefore, ALL stream endpoints for CorePlayer must use plain HTTP ('http://').
+  const customHost = (req.query.host as string) || (req.query.ip as string) || '';
+  const host = customHost || req.get('host') || '127.0.0.1:3000';
+  const proto = 'http'; // CorePlayer requires plain HTTP without SSL/TLS
+  const targetCorePlayerM3u = `/api/channel/${encodeURIComponent(channel.id)}/coreplayer.m3u${customHost ? `?host=${encodeURIComponent(customHost)}` : ''}`;
   const e72TsUrl = `/api/channel/${encodeURIComponent(channel.id)}/e72.ts`;
   const absoluteE72TsUrl = `${proto}://${host}${e72TsUrl}`;
   const liveTsUrl = `/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
   const absoluteLiveTsUrl = `${proto}://${host}${liveTsUrl}`;
-  const corePlayerSchemeUrl = `coreplayer://${streamUrl}`;
+  const corePlayerSchemeUrl = `coreplayer://${absoluteE72TsUrl}`;
   const vlcLaunchUrl = `/open/${encodeURIComponent(channel.id)}?player=vlc`;
 
   // Serve XHTML strictly compatible with Nokia BrowserNG, Mobile Browsers and CorePlayer
@@ -187,7 +191,9 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
     .url { background: #0b0c10; color: #00ff66; padding: 8px 10px; font-family: monospace; font-size: 11px; word-break: break-all; margin: 6px 0; border: 1px solid #22c55e44; border-radius: 6px; }
     .notice-box { background: #1a2233; border: 1px solid #2a4365; border-radius: 8px; padding: 10px; margin: 12px 0; font-size: 12px; color: #cbd5e1; }
     .notice-title { color: #f59e0b; font-weight: bold; margin-bottom: 4px; }
+    .alert-box { background: #3b1111; border: 1px solid #ef4444; border-radius: 8px; padding: 10px; margin: 10px 0; font-size: 12px; color: #fca5a5; line-height: 1.5; }
     .footer-link { color: #9ca3af; text-decoration: none; font-size: 12px; display: block; text-align: center; margin-top: 12px; }
+    .ip-box { background: #111827; border: 1px solid #374151; border-radius: 6px; padding: 8px; margin: 10px 0; }
   </style>
 </head>
 <body>
@@ -195,9 +201,29 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
     <h3>KẾT NỐI PHÁT KÊNH TRÊN ĐIỆN THOẠI</h3>
     <div class="ch-name">${escapeHtml(channel.name)}</div>
 
+    <!-- Hướng dẫn xử lý lỗi HTTPS của CorePlayer -->
+    <div class="alert-box">
+      <strong style="color:#f87171;font-size:13px;">⚠️ KHẮC PHỤC LỖI "HTTPS hỗ trợ các thỏa thuận không được":</strong><br />
+      &bull; <strong>Nguyên nhân:</strong> CorePlayer v1.3.6 trên Nokia E72 (Symbian S60) chỉ hỗ trợ <strong>HTTP thường</strong>. Máy không hỗ trợ chuẩn TLS 1.2/1.3 và chứng chỉ bảo mật của HTTPS hiện đại. Khi mở link <code>https://</code>, máy sẽ báo lỗi trên.<br />
+      &bull; <strong>Giải pháp:</strong> Luôn dùng link <strong>http://</strong> (chữ thường, không có 's') hoặc tải file M3U đã lọc sạch HTTPS bên dưới.
+    </div>
+
+    <!-- Cấu hình IP LAN nếu chạy cùng Wi-Fi -->
+    <div class="ip-box">
+      <form action="/open/${encodeURIComponent(channel.id)}" method="GET">
+        <label style="font-size:11px;color:#cbd5e1;display:block;margin-bottom:4px;font-weight:bold;">
+          &#128246; Cấu hình IP máy tính LAN (khi E72 kết nối Wi-Fi nhà):
+        </label>
+        <div style="display:flex;gap:4px;">
+          <input type="text" name="host" value="${escapeHtml(host)}" style="flex:1;padding:6px;font-size:12px;background:#1f2937;color:#fff;border:1px solid #4b5563;border-radius:4px;" placeholder="VD: 192.168.1.15:3000" />
+          <input type="submit" value="Cập nhật IP" style="padding:6px 10px;font-size:12px;background:#0284c7;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;" />
+        </div>
+      </form>
+    </div>
+
     <!-- Nút phát cho E72 và CorePlayer -->
     <a class="btn btn-e72" href="${escapeHtml(e72TsUrl)}">&#9654; XEM TRÊN NOKIA E72 (QVGA 320x240 MƯỢT NHẸ)</a>
-    <a class="btn btn-green" href="${escapeHtml(targetCorePlayerM3u)}">&#128190; TẢI FILE .M3U CHO COREPLAYER (KHÔNG LỖI BOM)</a>
+    <a class="btn btn-green" href="${escapeHtml(targetCorePlayerM3u)}">&#128190; TẢI FILE .M3U CHO COREPLAYER (CHUẨN HTTP - KHÔNG LỖI SSL)</a>
 
     <!-- Nút cho smartphone -->
     <a class="btn btn-vlc" href="${escapeHtml(vlcLaunchUrl)}">&#9654; XEM TRÊN VLC PLAYER (CHO ANDROID / IPHONE)</a>
@@ -205,24 +231,23 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
     <div class="notice-box">
       <div class="notice-title">&#128225; HƯỚNG DẪN XEM TRÊN NOKIA E72:</div>
       <div>
-        <strong>Cách 1 (Nhanh nhất - Không cần tải file):</strong><br />
+        <strong>Cách 1 (Nhanh nhất - Nhập URL trực tiếp):</strong><br />
         1. Mở ứng dụng <strong>CorePlayer</strong> trên E72.<br />
         2. Bấm <strong>Menu (Phím chọn trái) &gt; Open URL (Mở URL)</strong>.<br />
-        3. Điền đường link sau rồi bấm <strong>OK</strong>:
+        3. Điền đường link sau (chú ý là <strong>http://</strong>, không dùng https):
         <div class="url">${escapeHtml(absoluteE72TsUrl)}</div>
         <em>(Luồng này đã được chuyển mã xuống 320x240 H.264 Baseline L1.3 và AAC 64k, CPU E72 chạy mát và mượt mà 100%).</em><br /><br />
         <strong>Cách 2 (Mở bằng file .M3U):</strong><br />
         &bull; Bấm nút <strong>"Tải file .M3U cho CorePlayer"</strong> ở trên.<br />
-        &bull; Mở trình quản lý file trên E72 &gt; Chọn file vừa tải &gt; Mở bằng <strong>CorePlayer</strong>. (File đã loại bỏ mã Unicode BOM và chứa link trực tiếp).<br /><br />
+        &bull; Mở trình quản lý file trên E72 &gt; Chọn file vừa tải &gt; Mở bằng <strong>CorePlayer</strong>.<br /><br />
         <strong>Mẹo chỉnh CorePlayer tối ưu cho E72:</strong><br />
         Vào <strong>Menu &gt; Tools &gt; Preferences &gt; Video</strong> &gt; Mục <strong>Video Output</strong> chọn <strong>DirectDraw</strong> hoặc <strong>Symbian Screen</strong> để hình ảnh không bị giật.
       </div>
     </div>
 
-    <div style="font-size:11px;color:#9ca3af;margin-top:6px;">Link luồng MPEG-TS gốc (Không nén lại):</div>
+    <div style="font-size:11px;color:#9ca3af;margin-top:6px;">Link luồng MPEG-TS gốc (HTTP không nén lại):</div>
     <div class="url" style="color:#38bdf8;border-color:#0284c744;">${escapeHtml(absoluteLiveTsUrl)}</div>
 
-    <a class="btn btn-gray" href="${escapeHtml(corePlayerSchemeUrl)}">Mở qua Scheme coreplayer://</a>
     <a class="footer-link" href="/legacy/channel/${encodeURIComponent(channel.id)}">&laquo; Quay lại thông tin kênh</a>
     <a class="footer-link" href="/">&laquo; Quay lại giao diện chính</a>
   </div>
