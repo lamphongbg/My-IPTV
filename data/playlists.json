@@ -1,0 +1,11 @@
+[
+  {
+    "id": "default-playlist",
+    "name": "Danh sách VTV & Quốc tế (Mặc định)",
+    "type": "content",
+    "enabled": true,
+    "channel_count": 11186,
+    "last_updated": "2026-10-09T14:33:26.875Z",
+    "status": "active"
+  }
+]

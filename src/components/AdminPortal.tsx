@@ -79,6 +79,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
   const [channelSearch, setChannelSearch] = useState<string>('');
   const [filterPlaylist, setFilterPlaylist] = useState<string>('all');
   const [filterGroup, setFilterGroup] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  // Batch channel scanner state
+  const [scanProgress, setScanProgress] = useState<{
+    isRunning: boolean;
+    total: number;
+    scanned: number;
+    onlineCount: number;
+    offlineCount: number;
+    currentChannelName?: string;
+  } | null>(null);
+  const [isStartingScan, setIsStartingScan] = useState<boolean>(false);
 
   // Stream probe state
   const [testUrlInput, setTestUrlInput] = useState<string>('');
@@ -90,8 +102,35 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
   useEffect(() => {
     if (token) {
       fetchAdminData();
+      // Check if a scan is already running on mount
+      fetch('/api/admin/channels/scan-status', { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((d) => { if (d.isRunning) setScanProgress(d); })
+        .catch(() => {});
     }
   }, [token]);
+
+  // Poll scanner progress if running
+  useEffect(() => {
+    let timer: any;
+    if (scanProgress?.isRunning) {
+      timer = setInterval(async () => {
+        try {
+          const res = await fetch('/api/admin/channels/scan-status', { headers: authHeaders() });
+          if (res.ok) {
+            const data = await res.json();
+            setScanProgress(data);
+            if (!data.isRunning) {
+              clearInterval(timer);
+              fetchAdminData();
+              showNotification(`Quét hoàn tất: ${data.onlineCount} online, ${data.offlineCount} offline!`);
+            }
+          }
+        } catch {}
+      }, 1200);
+    }
+    return () => clearInterval(timer);
+  }, [scanProgress?.isRunning]);
 
   const showNotification = (text: string, type: 'success' | 'error' = 'success') => {
     setActionMessage({ text, type });
@@ -354,10 +393,108 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     }
   };
 
+  const handleStartBatchScan = async () => {
+    if (
+      !confirm(
+        `Bắt đầu quét rà soát toàn bộ ${channels.length} kênh trong hệ thống?\n\n- Kênh phát tốt: Giữ nguyên Active (Khả dụng)\n- Kênh lỗi/chết link: Tự động đánh dấu Offline (Không khả dụng)`
+      )
+    )
+      return;
+    setIsStartingScan(true);
+    try {
+      const res = await fetch('/api/admin/channels/scan-all', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ concurrency: 6 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không thể bắt đầu quét');
+      setScanProgress(data.progress);
+      showNotification('Đã bắt đầu tiến trình rà soát tính khả dụng!');
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    } finally {
+      setIsStartingScan(false);
+    }
+  };
+
+  const handleStopBatchScan = async () => {
+    try {
+      const res = await fetch('/api/admin/channels/scan-stop', {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      if (res.ok) {
+        showNotification('Đã dừng tiến trình quét');
+        setScanProgress((prev) => (prev ? { ...prev, isRunning: false } : null));
+        fetchAdminData();
+      }
+    } catch {}
+  };
+
+  const handleScanSingleChannel = async (channelId: string) => {
+    setTestingChannelId(channelId);
+    try {
+      const res = await fetch(`/api/admin/channels/${channelId}/scan`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Quét kênh thất bại');
+      showNotification(
+        data.status === 'online'
+          ? `✅ "${data.name}": Khả dụng (${data.responseTimeMs}ms)`
+          : `🔴 "${data.name}": Không khả dụng (${data.error || 'Mất kết nối'})`,
+        data.status === 'online' ? 'success' : 'error'
+      );
+      fetchAdminData();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    } finally {
+      setTestingChannelId(null);
+    }
+  };
+
+  const handleToggleChannelStatus = async (channel: Channel) => {
+    const nextStatus = channel.status === 'active' ? 'offline' : 'active';
+    try {
+      const res = await fetch(`/api/admin/channels/${channel.id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (!res.ok) throw new Error('Cập nhật trạng thái thất bại');
+      showNotification(
+        `Kênh "${channel.name}" đã chuyển sang ${nextStatus === 'active' ? '🟢 Khả dụng' : '🔴 Không khả dụng'}`
+      );
+      fetchAdminData();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  };
+
+  const handleResetAllStatus = async () => {
+    if (!confirm('Khôi phục tất cả các kênh về trạng thái Khả Dụng (Active)?')) return;
+    try {
+      const res = await fetch('/api/admin/channels/reset-status', {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      showNotification(data.message);
+      fetchAdminData();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  };
+
   // Filter channels
   const filteredChannels = channels.filter((c) => {
     if (filterPlaylist !== 'all' && c.playlist_id !== filterPlaylist) return false;
     if (filterGroup !== 'all' && c.group.toLowerCase() !== filterGroup.toLowerCase()) return false;
+    if (filterStatus === 'active' && c.status !== 'active') return false;
+    if (filterStatus === 'offline' && c.status === 'active') return false;
     if (channelSearch.trim()) {
       const q = channelSearch.toLowerCase().trim();
       return (
@@ -721,29 +858,94 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
               <div>
                 <h3 className="text-sm font-semibold text-white">Danh sách Kênh Truyền Hình</h3>
                 <p className="text-xs text-neutral-400">
-                  Xem, tìm kiếm, chỉnh sửa codec, thông số, và kiểm tra URL stream
+                  Xem, rà soát tính khả dụng tự động, chỉnh sửa thông số và quản lý luồng phát
                 </p>
               </div>
 
-              <button
-                onClick={() => {
-                  setEditingChannelId(null);
-                  setChannelForm({
-                    name: '',
-                    group: 'VTV',
-                    logo: '',
-                    stream_url: '',
-                    format: 'hls',
-                    status: 'active',
-                  });
-                  setIsChannelModalOpen(true);
-                }}
-                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition self-start sm:self-auto"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Thêm Kênh Thủ Công</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleStartBatchScan}
+                  disabled={scanProgress?.isRunning || isStartingScan}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow"
+                  title="Tự động kiểm tra từng luồng và đánh dấu offline các kênh hỏng"
+                >
+                  <Activity className={`w-4 h-4 ${scanProgress?.isRunning ? 'animate-spin' : ''}`} />
+                  <span>{scanProgress?.isRunning ? 'Đang Quét Rà Soát...' : '⚡ Quét Rà Soát Toàn Bộ Kênh'}</span>
+                </button>
+
+                <button
+                  onClick={handleResetAllStatus}
+                  className="px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
+                  title="Khôi phục trạng thái hoạt động cho toàn bộ kênh"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-neutral-400" />
+                  <span>↺ Khôi phục Active</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setEditingChannelId(null);
+                    setChannelForm({
+                      name: '',
+                      group: 'VTV',
+                      logo: '',
+                      stream_url: '',
+                      format: 'hls',
+                      status: 'active',
+                    });
+                    setIsChannelModalOpen(true);
+                  }}
+                  className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Thêm Kênh</span>
+                </button>
+              </div>
             </div>
+
+            {/* Batch Scan Progress Banner */}
+            {scanProgress && (scanProgress.isRunning || scanProgress.scanned > 0) && (
+              <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${scanProgress.isRunning ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
+                    <span className="font-semibold text-white">
+                      {scanProgress.isRunning ? 'Tiến trình quét tính khả dụng:' : 'Kết quả rà soát vừa hoàn thành:'}
+                    </span>
+                    <span className="text-neutral-400 font-mono">
+                      {scanProgress.scanned} / {scanProgress.total} kênh ({Math.round((scanProgress.scanned / (scanProgress.total || 1)) * 100)}%)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="text-emerald-400 font-medium">🟢 Online: {scanProgress.onlineCount}</span>
+                    <span className="text-rose-400 font-medium">🔴 Offline: {scanProgress.offlineCount}</span>
+                    {scanProgress.isRunning && (
+                      <button
+                        onClick={handleStopBatchScan}
+                        className="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-[11px] font-bold transition"
+                      >
+                        Dừng quét
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full bg-neutral-950 rounded-full h-2 overflow-hidden border border-neutral-800">
+                  <div
+                    className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.round((scanProgress.scanned / (scanProgress.total || 1)) * 100)}%` }}
+                  />
+                </div>
+
+                {scanProgress.isRunning && scanProgress.currentChannelName && (
+                  <p className="text-[11px] text-neutral-400 truncate">
+                    Đang kiểm tra: <span className="text-amber-300 font-medium">{scanProgress.currentChannelName}</span>
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Filters Row */}
             <div className="flex flex-wrap items-center gap-2">
@@ -757,6 +959,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   className="w-full bg-neutral-900 border border-neutral-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
                 />
               </div>
+
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="bg-neutral-900 border border-neutral-800 text-neutral-300 rounded-xl px-3 py-2 text-xs focus:outline-none font-medium"
+              >
+                <option value="all">Tất cả trạng thái ({channels.length})</option>
+                <option value="active">🟢 Khả dụng / Online ({channels.filter((c) => c.status === 'active').length})</option>
+                <option value="offline">🔴 Không khả dụng / Offline ({channels.filter((c) => c.status === 'offline').length})</option>
+              </select>
 
               <select
                 value={filterPlaylist}
@@ -845,18 +1057,40 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                             </div>
                           </td>
                           <td className="py-3 px-4">
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            <button
+                              onClick={() => handleToggleChannelStatus(ch)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1.5 transition ${
                                 ch.status === 'active'
-                                  ? 'bg-emerald-500/10 text-emerald-400'
-                                  : 'bg-neutral-800 text-neutral-400'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20'
+                                  : 'bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20'
                               }`}
+                              title="Bấm để chuyển đổi trạng thái Khả dụng <-> Offline"
                             >
-                              {ch.status}
-                            </span>
+                              <span className={`w-1.5 h-1.5 rounded-full ${ch.status === 'active' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                              <span>{ch.status === 'active' ? 'Khả Dụng' : 'Offline'}</span>
+                            </button>
+                            {ch.description && (
+                              <p className="text-[10px] text-neutral-400 mt-1 truncate max-w-[150px]" title={ch.description}>
+                                {ch.description}
+                              </p>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* Scan / Health Check single channel */}
+                              <button
+                                onClick={() => handleScanSingleChannel(ch.id)}
+                                disabled={testingChannelId === ch.id}
+                                className="p-1.5 text-neutral-400 hover:text-emerald-400 hover:bg-neutral-800 rounded transition"
+                                title="Rà soát tính khả dụng kênh này ngay lập tức"
+                              >
+                                {testingChannelId === ch.id ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                                ) : (
+                                  <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                                )}
+                              </button>
+
                               {/* Play Preview in Modal */}
                               <button
                                 onClick={() => setPreviewChannel(ch)}

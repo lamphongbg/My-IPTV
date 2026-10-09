@@ -246,9 +246,61 @@ router.delete('/api/admin/channels/:id', async (req: Request, res: Response) => 
   }
 });
 
+import {
+  startBatchScan,
+  stopBatchScan,
+  getScanProgress,
+  scanSingleChannel,
+} from '../src/services/channelScanner.js';
+
 // -----------------------------------------------------------------------------
-// STREAM TEST ENDPOINT
+// STREAM TEST & BATCH CHANNEL SCANNER
 // -----------------------------------------------------------------------------
+
+router.post('/api/admin/channels/scan-all', async (req: Request, res: Response) => {
+  try {
+    const concurrency = parseInt(req.body.concurrency as string, 10) || 6;
+    await startBatchScan(concurrency);
+    res.json({ success: true, message: 'Đã bắt đầu tiến trình quét toàn bộ kênh', progress: getScanProgress() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/api/admin/channels/scan-status', (_req: Request, res: Response) => {
+  res.json(getScanProgress());
+});
+
+router.post('/api/admin/channels/scan-stop', (_req: Request, res: Response) => {
+  stopBatchScan();
+  res.json({ success: true, message: 'Đã dừng tiến trình quét', progress: getScanProgress() });
+});
+
+router.post('/api/admin/channels/:id/scan', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const channel = await getChannelById(id);
+    if (!channel) {
+      return res.status(404).json({ error: 'Không tìm thấy kênh để quét.' });
+    }
+    const result = await scanSingleChannel(channel);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/api/admin/channels/reset-status', async (_req: Request, res: Response) => {
+  try {
+    const channels = await getAllChannelsAdmin();
+    for (const ch of channels) {
+      await updateChannel(ch.id, { status: 'active' });
+    }
+    res.json({ success: true, message: `Đã khôi phục trạng thái hoạt động cho ${channels.length} kênh.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.post('/api/admin/test-stream', async (req: Request, res: Response) => {
   try {
