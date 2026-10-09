@@ -203,7 +203,7 @@ router.get(
           const ch = channels[i];
           const idx = i + 1;
           const safeName = sanitizeM3uFilename(ch.name, `ch_${ch.id}`);
-          const streamUrl = `${proto}://${host}/c/${idx}${resParam}`;
+          const streamUrl = `${proto}://${host}/c/${idx}.ts${resParam}`;
           body += `#EXTINF:0,${idx}. ${safeName} [${resChoice.toUpperCase()}]\r\n${streamUrl}\r\n`;
         }
         res.setHeader('Content-Type', 'audio/x-mpegurl; charset=utf-8');
@@ -470,7 +470,7 @@ router.get(
       const resQuery = ((req.query.res as string) || (req.query.resolution as string) || '').toLowerCase();
       const resParam = resQuery ? `?res=${encodeURIComponent(resQuery)}` : '';
 
-      const e72TsUrl = `${proto}://${host}/c/${encodeURIComponent(channel.id)}${resParam}`;
+      const e72TsUrl = `${proto}://${host}/c/${encodeURIComponent(channel.id)}.ts${resParam}`;
       const liveTsUrl = `${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
 
       if (isPls) {
@@ -495,15 +495,15 @@ router.get(
         let entries = `#EXTM3U\r\n`;
         // Selected or default resolution first
         if (resQuery === '180p') {
-          entries += `#EXTINF:0,${safeAsciiName} [180p Sieu Nhe - Mang Yeu 2G-3G]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=180p\r\n`;
-          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=240p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [180p Sieu Nhe - Mang Yeu 2G-3G]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}.ts?res=180p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}.ts?res=240p\r\n`;
         } else if (resQuery === '360p') {
-          entries += `#EXTINF:0,${safeAsciiName} [360p SD - Man Hinh Lon]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=360p\r\n`;
-          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=240p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [360p SD - Man Hinh Lon]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}.ts?res=360p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}.ts?res=240p\r\n`;
         } else {
-          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72 - Muot Ma]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=240p\r\n`;
-          entries += `#EXTINF:0,${safeAsciiName} [180p Sieu Nhe - Tai Nhanh Mang Yeu]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=180p\r\n`;
-          entries += `#EXTINF:0,${safeAsciiName} [360p SD - Net Hon]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=360p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72 - Muot Ma]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}.ts?res=240p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [180p Sieu Nhe - Tai Nhanh Mang Yeu]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}.ts?res=180p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [360p SD - Net Hon]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}.ts?res=360p\r\n`;
         }
         entries += `#EXTINF:0,${safeAsciiName} [Goc MPEG-TS Khong Nen]\r\n${liveTsUrl}\r\n`;
         if (channel.stream_url && channel.stream_url.startsWith('http://')) {

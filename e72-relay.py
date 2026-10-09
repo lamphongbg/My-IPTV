@@ -21,6 +21,10 @@ import socketserver
 import urllib.request
 import ssl
 
+class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
 DEFAULT_PORT = 8080
 DEFAULT_TARGET = "https://my-iptv-uguq.onrender.com"
 
@@ -80,13 +84,16 @@ class CorePlayerRelayHandler(http.server.BaseHTTPRequestHandler):
                     return
 
                 # Stream binary content (MPEG-TS chunks or M3U/PLS text)
+                # Dùng khối 8192 byte tối ưu cho bộ đệm TCP trên Symbian S60v3
+                total_sent = 0
                 while True:
-                    chunk = response.read(65536)
+                    chunk = response.read(8192)
                     if not chunk:
                         break
                     try:
                         self.wfile.write(chunk)
                         self.wfile.flush()
+                        total_sent += len(chunk)
                     except (BrokenPipeError, ConnectionResetError):
                         break
         except Exception as e:
@@ -113,9 +120,9 @@ if __name__ == '__main__':
     print(f"    http://{LOCAL_IP}:{PORT}/legacy")
     print("-" * 65)
     print(" 👉 TRÊN COREPLAYER (MENU > OPEN URL), NHẬP LINK NGẮN:")
-    print(f"    Kênh 1 (VTV1): http://{LOCAL_IP}:{PORT}/c/1")
-    print(f"    Kênh 2 (VTV2): http://{LOCAL_IP}:{PORT}/c/2")
-    print(f"    Kênh 3 (VTV3): http://{LOCAL_IP}:{PORT}/c/3")
+    print(f"    Kênh 1 (VTV1): http://{LOCAL_IP}:{PORT}/c/1.ts (hoặc /c/1.m3u)")
+    print(f"    Kênh 2 (VTV2): http://{LOCAL_IP}:{PORT}/c/2.ts (hoặc /c/2.m3u)")
+    print(f"    Kênh 3 (VTV3): http://{LOCAL_IP}:{PORT}/c/3.ts (hoặc /c/3.m3u)")
     print("-" * 65)
     print(" 👉 TẢI PLAYLIST M3U/PLS TOÀN BỘ KÊNH CHO COREPLAYER:")
     print(f"    http://{LOCAL_IP}:{PORT}/api/channels/e72.m3u")
@@ -123,8 +130,7 @@ if __name__ == '__main__':
     print("=" * 65)
     print(" Đang chờ kết nối từ Nokia E72... (Bấm Ctrl+C để dừng)")
 
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("", PORT), CorePlayerRelayHandler) as httpd:
+    with ThreadingTCPServer(("", PORT), CorePlayerRelayHandler) as httpd:
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

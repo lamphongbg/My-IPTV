@@ -96,19 +96,31 @@ app.get('/api/device-info', (req: Request, res: Response) => {
   });
 });
 
-// Downloadable E72 Local HTTP Bridge script
+// Downloadable E72 Local HTTP Bridge script (Python & Node.js)
 app.get(['/api/tools/e72-relay.py', '/e72-relay.py'], (req: Request, res: Response) => {
   const scriptPath = path.resolve(__dirname, 'e72-relay.py');
   if (fs.existsSync(scriptPath)) {
     let content = fs.readFileSync(scriptPath, 'utf-8');
-    const hostHeader = (req.headers['x-forwarded-host'] as string) || req.get('host') || '';
-    const targetUrl = (hostHeader.includes('127.0.0.1') || hostHeader.includes('localhost') || hostHeader.includes('onrender.com'))
-      ? 'https://my-iptv-uguq.onrender.com'
-      : `https://${hostHeader}`;
+    const targetUrl = 'https://my-iptv-uguq.onrender.com';
     content = content.replace(/DEFAULT_TARGET\s*=\s*"[^"]*"/, `DEFAULT_TARGET = "${targetUrl}"`);
 
     res.setHeader('Content-Type', 'text/x-python; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="e72-relay.py"');
+    res.send(content);
+  } else {
+    res.status(404).send('Relay script not found');
+  }
+});
+
+app.get(['/api/tools/e72-relay.js', '/e72-relay.js'], (req: Request, res: Response) => {
+  const scriptPath = path.resolve(__dirname, 'e72-relay.js');
+  if (fs.existsSync(scriptPath)) {
+    let content = fs.readFileSync(scriptPath, 'utf-8');
+    const targetUrl = 'https://my-iptv-uguq.onrender.com';
+    content = content.replace(/DEFAULT_TARGET\s*=\s*'[^']*'/, `DEFAULT_TARGET = '${targetUrl}'`);
+
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="e72-relay.js"');
     res.send(content);
   } else {
     res.status(404).send('Relay script not found');
