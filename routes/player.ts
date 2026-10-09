@@ -247,10 +247,10 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
       <form action="/open/${encodeURIComponent(channel.id)}" method="GET">
         <input type="hidden" name="res" value="${escapeHtml(selectedRes)}" />
         <label style="font-size:11px;color:#cbd5e1;display:block;margin-bottom:4px;font-weight:bold;">
-          &#128246; Cấu hình IP máy tính LAN (khi E72 kết nối Wi-Fi nhà):
+          &#128246; Cấu hình IP máy tính chạy Relay (khi E72 kết nối Wi-Fi):
         </label>
         <div style="display:flex;gap:4px;">
-          <input type="text" name="host" value="${escapeHtml(host)}" style="flex:1;padding:6px;font-size:12px;background:#1f2937;color:#fff;border:1px solid #4b5563;border-radius:4px;" placeholder="VD: 192.168.1.15:3000" />
+          <input type="text" name="host" value="${escapeHtml(host)}" style="flex:1;padding:6px;font-size:12px;background:#1f2937;color:#fff;border:1px solid #4b5563;border-radius:4px;" placeholder="VD: 192.168.1.15:8080" />
           <input type="submit" value="Cập nhật IP" style="padding:6px 10px;font-size:12px;background:#0284c7;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;" />
         </div>
       </form>

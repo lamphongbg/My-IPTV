@@ -67,6 +67,57 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [resolutionNotice, setResolutionNotice] = useState<string | null>(null);
   const resolutionMenuRef = useRef<HTMLDivElement>(null);
   const resolutionNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [menuPositionStyle, setMenuPositionStyle] = useState<React.CSSProperties>({});
+
+  // Dynamic positioning for resolution menu to prevent clipping on narrow screens
+  const updateMenuPosition = useCallback(() => {
+    if (!resolutionMenuRef.current) return;
+    const buttonRect = resolutionMenuRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+
+    // Boundary constraints: respect player container if available, otherwise viewport
+    const containerRect = playerContainerRef.current?.getBoundingClientRect();
+    const minLeft = (containerRect ? Math.max(containerRect.left, 8) : 8) + 8;
+    const maxRight = (containerRect ? Math.min(containerRect.right, viewportWidth - 8) : viewportWidth - 8) - 8;
+
+    // Available width for the menu (ensure minimum 260px, maximum 320px)
+    const maxAvailableWidth = Math.max(260, maxRight - minLeft);
+    const targetWidth = Math.min(320, maxAvailableWidth);
+
+    // Initial target: align to left of button
+    let targetLeft = buttonRect.left;
+
+    // If aligning left causes right edge to spill past maxRight, shift left
+    if (targetLeft + targetWidth > maxRight) {
+      targetLeft = maxRight - targetWidth;
+    }
+    // If shifting left causes left edge to spill past minLeft, clamp to minLeft
+    if (targetLeft < minLeft) {
+      targetLeft = minLeft;
+    }
+
+    // Convert to relative coordinate from the resolutionMenuRef button container
+    const relLeft = targetLeft - buttonRect.left;
+
+    setMenuPositionStyle({
+      left: `${Math.round(relLeft)}px`,
+      width: `${Math.round(targetWidth)}px`,
+      maxWidth: `${Math.round(maxAvailableWidth)}px`,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isResolutionMenuOpen) {
+      updateMenuPosition();
+      const handleReposition = () => updateMenuPosition();
+      window.addEventListener('resize', handleReposition);
+      window.addEventListener('scroll', handleReposition, true);
+      return () => {
+        window.removeEventListener('resize', handleReposition);
+        window.removeEventListener('scroll', handleReposition, true);
+      };
+    }
+  }, [isResolutionMenuOpen, updateMenuPosition]);
 
   // Click outside to close resolution menu
   useEffect(() => {
@@ -657,10 +708,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   return (
     <div
       ref={playerContainerRef}
-      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-2xl flex flex-col"
+      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl flex flex-col relative"
     >
       {/* Video Canvas Container */}
-      <div className="relative w-full aspect-video bg-black flex items-center justify-center group overflow-hidden">
+      <div className="relative w-full aspect-video bg-black flex items-center justify-center group overflow-hidden rounded-t-xl">
         <video
           ref={videoRef}
           className="w-full h-full object-contain pointer-events-none select-none"
@@ -841,7 +892,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       </div>
 
       {/* Player Meta Info Bar */}
-      <div className="p-3.5 bg-neutral-900 border-t border-neutral-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="p-3.5 bg-neutral-900 border-t border-neutral-800 rounded-b-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {channel.logo ? (
             <img
@@ -920,101 +971,212 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               )}
             </button>
 
-            {/* Resolution Dropdown Popup */}
+            {/* Resolution Dropdown Popup & Mobile Bottom Sheet */}
             {isResolutionMenuOpen && (
-              <div className="absolute bottom-full right-0 mb-2 w-72 sm:w-80 bg-neutral-950/95 backdrop-blur-md border border-neutral-800 rounded-xl shadow-2xl p-3 z-50 text-xs">
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-neutral-800">
-                  <div className="flex items-center gap-2">
-                    <Sliders className="w-4 h-4 text-sky-400" />
-                    <span className="font-bold text-neutral-100">Tùy chọn độ phân giải</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsResolutionMenuOpen(false)}
-                    className="text-neutral-400 hover:text-white p-0.5 text-sm"
+              <>
+                {/* Mobile Bottom Sheet Drawer for narrow screens (screen width < 640px) */}
+                <div
+                  className="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm z-50 flex items-end justify-center p-0 sm:hidden animate-fadeIn"
+                  onClick={() => setIsResolutionMenuOpen(false)}
+                >
+                  <div
+                    className="w-full max-w-lg bg-neutral-950 border-t border-neutral-800 rounded-t-2xl p-4 shadow-2xl text-xs z-50 pb-8 flex flex-col max-h-[85vh]"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    ✕
-                  </button>
-                </div>
-
-                <p className="text-[11px] text-neutral-400 mb-2.5 leading-relaxed bg-neutral-900/80 p-2 rounded-lg border border-neutral-800/60">
-                  💡 <strong>Mẹo xem mượt:</strong> Chọn độ phân giải <strong>360p</strong> hoặc <strong>480p</strong> giúp video tải nhanh hơn tức thì, giảm giật lag và tiết kiệm 70% băng thông mạng khi mạng yếu.
-                </p>
-
-                <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
-                  {/* Option: Auto */}
-                  <button
-                    type="button"
-                    onClick={() => handleSelectLevel(-1, 'Tự động')}
-                    className={`w-full p-2 rounded-lg flex items-center justify-between transition text-left ${
-                      currentLevelIndex === -1
-                        ? 'bg-sky-950/70 border border-sky-600/70 text-sky-200'
-                        : 'hover:bg-neutral-900 text-neutral-300'
-                    }`}
-                  >
-                    <div>
-                      <div className="font-semibold text-xs flex items-center gap-1.5">
-                        <span>⚡ Tự động (HLS Adaptive)</span>
-                        <span className="text-[10px] px-1.5 py-0.2 bg-neutral-800 text-neutral-400 rounded">Khuyên dùng</span>
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-neutral-800">
+                      <div className="flex items-center gap-2">
+                        <Sliders className="w-4 h-4 text-sky-400" />
+                        <span className="font-bold text-neutral-100 text-sm">Tùy chọn độ phân giải</span>
                       </div>
-                      <div className="text-[10px] text-neutral-400 mt-0.5">
-                        Tự động điều chỉnh chất lượng theo tốc độ đường truyền
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsResolutionMenuOpen(false)}
+                        className="text-neutral-400 hover:text-white p-1 text-base rounded hover:bg-neutral-800"
+                        title="Đóng"
+                      >
+                        ✕
+                      </button>
                     </div>
-                    {currentLevelIndex === -1 && <Check className="w-4 h-4 text-sky-400 flex-shrink-0" />}
-                  </button>
 
-                  {/* Detected Quality Levels */}
-                  {hlsLevels.length > 0 ? (
-                    hlsLevels.map((lvl) => {
-                      const isSelected = currentLevelIndex === lvl.index;
-                      return (
-                        <button
-                          key={lvl.index}
-                          type="button"
-                          onClick={() => handleSelectLevel(lvl.index, lvl.label)}
-                          className={`w-full p-2 rounded-lg flex items-center justify-between transition text-left ${
-                            isSelected
-                              ? 'bg-amber-950/70 border border-amber-600/70 text-amber-200'
-                              : 'hover:bg-neutral-900 text-neutral-300'
-                          }`}
-                        >
-                          <div>
-                            <div className="font-semibold text-xs flex items-center gap-1.5">
-                              <span>{lvl.label}</span>
-                              {lvl.isSmoothPreset && (
-                                <span className="text-[10px] px-1.5 py-0.2 bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 rounded font-medium">
-                                  ⚡ Tải nhanh / Siêu mượt
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[10px] text-neutral-400 mt-0.5">
-                              {lvl.width && lvl.height ? `${lvl.width}x${lvl.height}` : ''}
-                              {lvl.bitrate ? ` • ${(lvl.bitrate / 1000).toFixed(0)} kbps` : ''}
-                            </div>
+                    <p className="text-[11px] text-neutral-400 mb-2.5 leading-relaxed bg-neutral-900/80 p-2.5 rounded-lg border border-neutral-800/60">
+                      💡 <strong>Mẹo xem mượt:</strong> Chọn độ phân giải <strong>360p</strong> hoặc <strong>480p</strong> giúp video tải nhanh hơn tức thì, giảm giật lag và tiết kiệm 70% băng thông mạng khi mạng yếu.
+                    </p>
+
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                      {/* Option: Auto */}
+                      <button
+                        type="button"
+                        onClick={() => handleSelectLevel(-1, 'Tự động')}
+                        className={`w-full p-2.5 rounded-lg flex items-center justify-between transition text-left gap-2 ${
+                          currentLevelIndex === -1
+                            ? 'bg-sky-950/70 border border-sky-600/70 text-sky-200'
+                            : 'hover:bg-neutral-900 text-neutral-300'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-xs flex items-center gap-1.5 flex-wrap">
+                            <span>⚡ Tự động (HLS)</span>
+                            <span className="text-[9px] px-1.5 py-0.5 bg-neutral-800 text-neutral-400 rounded whitespace-nowrap">Khuyên dùng</span>
                           </div>
-                          {isSelected && <Check className="w-4 h-4 text-amber-400 flex-shrink-0" />}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="p-2 text-neutral-400 text-[11px] bg-neutral-900/50 rounded-lg">
-                      Luồng phát này cung cấp một mức chất lượng cố định từ nguồn đài. Trên điện thoại hoặc mạng yếu, bạn có thể tải M3U hoặc mở CorePlayer để chọn chuyển mã 180p/240p/360p.
+                          <div className="text-[10px] text-neutral-400 mt-0.5 truncate">
+                            Tự điều chỉnh theo tốc độ đường truyền
+                          </div>
+                        </div>
+                        {currentLevelIndex === -1 && <Check className="w-4 h-4 text-sky-400 flex-shrink-0" />}
+                      </button>
+
+                      {/* Detected Quality Levels */}
+                      {hlsLevels.length > 0 ? (
+                        hlsLevels.map((lvl) => {
+                          const isSelected = currentLevelIndex === lvl.index;
+                          return (
+                            <button
+                              key={lvl.index}
+                              type="button"
+                              onClick={() => handleSelectLevel(lvl.index, lvl.label)}
+                              className={`w-full p-2.5 rounded-lg flex items-center justify-between transition text-left gap-2 ${
+                                isSelected
+                                  ? 'bg-amber-950/70 border border-amber-600/70 text-amber-200'
+                                  : 'hover:bg-neutral-900 text-neutral-300'
+                              }`}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="font-semibold text-xs flex items-center gap-1.5 flex-wrap">
+                                  <span>{lvl.label}</span>
+                                  {lvl.isSmoothPreset && (
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 rounded font-medium whitespace-nowrap">
+                                      ⚡ Tải nhanh / Mượt
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-neutral-400 mt-0.5 truncate">
+                                  {lvl.width && lvl.height ? `${lvl.width}x${lvl.height}` : ''}
+                                  {lvl.bitrate ? ` • ${(lvl.bitrate / 1000).toFixed(0)} kbps` : ''}
+                                </div>
+                              </div>
+                              {isSelected && <Check className="w-4 h-4 text-amber-400 flex-shrink-0" />}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="p-2.5 text-neutral-400 text-[11px] bg-neutral-900/50 rounded-lg border border-neutral-800/50">
+                          Luồng phát này cung cấp một mức chất lượng cố định từ nguồn đài. Trên điện thoại hoặc mạng yếu, bạn có thể tải M3U hoặc mở CorePlayer để chọn chuyển mã 180p/240p/360p.
+                        </div>
+                      )}
                     </div>
-                  )}
+
+                    <div className="mt-3 pt-2.5 border-t border-neutral-800 flex items-center justify-between text-[11px] text-neutral-400">
+                      <span>Chế độ: <strong className="text-amber-300">{activeResolutionLabel}</strong></span>
+                      <a
+                        href={`/open/${channel.id}`}
+                        className="text-amber-400 hover:underline flex items-center gap-1"
+                      >
+                        <span>Cấu hình E72/VLC</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="mt-2.5 pt-2 border-t border-neutral-800 flex items-center justify-between text-[11px] text-neutral-400">
-                  <span>Chế độ: <strong className="text-amber-300">{activeResolutionLabel}</strong></span>
-                  <a
-                    href={`/open/${channel.id}`}
-                    className="text-amber-400 hover:underline flex items-center gap-1"
-                  >
-                    <span>Cấu hình E72/VLC</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
+                {/* Desktop Popover Menu for wider screens (sm and up) */}
+                <div
+                  style={menuPositionStyle}
+                  className="hidden sm:block absolute bottom-full mb-2 bg-neutral-950/95 backdrop-blur-md border border-neutral-800 rounded-xl shadow-2xl p-3 z-50 text-xs box-border w-80 max-w-[calc(100vw-32px)]"
+                >
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-neutral-800">
+                    <div className="flex items-center gap-2">
+                      <Sliders className="w-4 h-4 text-sky-400" />
+                      <span className="font-bold text-neutral-100">Tùy chọn độ phân giải</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsResolutionMenuOpen(false)}
+                      className="text-neutral-400 hover:text-white p-0.5 text-sm"
+                      title="Đóng"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-neutral-400 mb-2.5 leading-relaxed bg-neutral-900/80 p-2 rounded-lg border border-neutral-800/60">
+                    💡 <strong>Mẹo xem mượt:</strong> Chọn độ phân giải <strong>360p</strong> hoặc <strong>480p</strong> giúp video tải nhanh hơn tức thì, giảm giật lag và tiết kiệm 70% băng thông mạng khi mạng yếu.
+                  </p>
+
+                  <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+                    {/* Option: Auto */}
+                    <button
+                      type="button"
+                      onClick={() => handleSelectLevel(-1, 'Tự động')}
+                      className={`w-full p-2 rounded-lg flex items-center justify-between transition text-left gap-2 ${
+                        currentLevelIndex === -1
+                          ? 'bg-sky-950/70 border border-sky-600/70 text-sky-200'
+                          : 'hover:bg-neutral-900 text-neutral-300'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-xs flex items-center gap-1.5 flex-wrap">
+                          <span>⚡ Tự động (HLS)</span>
+                          <span className="text-[9px] px-1.5 py-0.5 bg-neutral-800 text-neutral-400 rounded whitespace-nowrap">Khuyên dùng</span>
+                        </div>
+                        <div className="text-[10px] text-neutral-400 mt-0.5 truncate">
+                          Tự điều chỉnh theo tốc độ đường truyền
+                        </div>
+                      </div>
+                      {currentLevelIndex === -1 && <Check className="w-4 h-4 text-sky-400 flex-shrink-0" />}
+                    </button>
+
+                    {/* Detected Quality Levels */}
+                    {hlsLevels.length > 0 ? (
+                      hlsLevels.map((lvl) => {
+                        const isSelected = currentLevelIndex === lvl.index;
+                        return (
+                          <button
+                            key={lvl.index}
+                            type="button"
+                            onClick={() => handleSelectLevel(lvl.index, lvl.label)}
+                            className={`w-full p-2 rounded-lg flex items-center justify-between transition text-left gap-2 ${
+                              isSelected
+                                ? 'bg-amber-950/70 border border-amber-600/70 text-amber-200'
+                                : 'hover:bg-neutral-900 text-neutral-300'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-xs flex items-center gap-1.5 flex-wrap">
+                                <span>{lvl.label}</span>
+                                {lvl.isSmoothPreset && (
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 rounded font-medium whitespace-nowrap">
+                                    ⚡ Tải nhanh / Mượt
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-neutral-400 mt-0.5 truncate">
+                                {lvl.width && lvl.height ? `${lvl.width}x${lvl.height}` : ''}
+                                {lvl.bitrate ? ` • ${(lvl.bitrate / 1000).toFixed(0)} kbps` : ''}
+                              </div>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-amber-400 flex-shrink-0" />}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="p-2 text-neutral-400 text-[11px] bg-neutral-900/50 rounded-lg">
+                        Luồng phát này cung cấp một mức chất lượng cố định từ nguồn đài. Trên điện thoại hoặc mạng yếu, bạn có thể tải M3U hoặc mở CorePlayer để chọn chuyển mã 180p/240p/360p.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-2.5 pt-2 border-t border-neutral-800 flex items-center justify-between text-[11px] text-neutral-400">
+                    <span>Chế độ: <strong className="text-amber-300">{activeResolutionLabel}</strong></span>
+                    <a
+                      href={`/open/${channel.id}`}
+                      className="text-amber-400 hover:underline flex items-center gap-1"
+                    >
+                      <span>Cấu hình E72/VLC</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
 

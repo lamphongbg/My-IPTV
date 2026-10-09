@@ -8,7 +8,7 @@ import adminRouter from './routes/admin.js';
 import proxyRouter from './routes/proxy.js';
 import { getPlaylists } from './src/db/storage.js';
 import { detectDevice } from './utils/deviceDetector.js';
-import { renderLegacyHome, renderLegacyChannel, renderLegacyNotFound } from './views/legacyRenderer.js';
+import { renderLegacyHome, renderLegacyChannel, renderLegacyNotFound, renderCorePlayerGuide } from './views/legacyRenderer.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -51,10 +51,17 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Set-Cookie', 'iptv_view_mode=; Path=/; Max-Age=0; SameSite=Lax');
   }
 
+  // Handle host configuration cookie for E72 / CorePlayer LAN setup
+  const hostParam = (req.query.host as string) || (req.query.ip as string);
+  if (hostParam && hostParam.trim()) {
+    res.setHeader('Set-Cookie', `e72_host=${encodeURIComponent(hostParam.trim())}; Path=/; Max-Age=31536000; SameSite=Lax`);
+  }
+
   const cookiePref = viewQuery === 'reset' ? undefined : (cookies['iptv_view_mode'] || undefined);
-  const detected = detectDevice(ua, viewQuery !== 'reset' ? viewQuery : undefined, cookiePref);
+  const detected = detectDevice(ua, viewQuery !== 'reset' ? viewQuery : undefined, cookiePref, req.headers as any);
   (req as any).deviceInfo = detected;
   (req as any).cookiePref = cookiePref;
+  (req as any).e72Host = hostParam || cookies['e72_host'] || '';
   next();
 });
 
@@ -90,12 +97,19 @@ app.get('/api/device-info', (req: Request, res: Response) => {
 });
 
 // Downloadable E72 Local HTTP Bridge script
-app.get(['/api/tools/e72-relay.py', '/e72-relay.py'], (_req: Request, res: Response) => {
+app.get(['/api/tools/e72-relay.py', '/e72-relay.py'], (req: Request, res: Response) => {
   const scriptPath = path.resolve(__dirname, 'e72-relay.py');
   if (fs.existsSync(scriptPath)) {
+    let content = fs.readFileSync(scriptPath, 'utf-8');
+    const hostHeader = (req.headers['x-forwarded-host'] as string) || req.get('host') || '';
+    const targetUrl = (hostHeader.includes('127.0.0.1') || hostHeader.includes('localhost') || hostHeader.includes('onrender.com'))
+      ? 'https://my-iptv-uguq.onrender.com'
+      : `https://${hostHeader}`;
+    content = content.replace(/DEFAULT_TARGET\s*=\s*"[^"]*"/, `DEFAULT_TARGET = "${targetUrl}"`);
+
     res.setHeader('Content-Type', 'text/x-python; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="e72-relay.py"');
-    res.sendFile(scriptPath);
+    res.send(content);
   } else {
     res.status(404).send('Relay script not found');
   }
@@ -116,7 +130,7 @@ async function handleLegacyHome(req: Request, res: Response) {
   const page = parseInt(req.query.page as string, 10) || 1;
   const group = (req.query.group as string) || 'all';
   const query = (req.query.q as string) || '';
-  const limit = 10; // 10 channels per page for Nokia QVGA screen
+  const limit = 12; // 12 channels per page for Nokia QVGA screen
 
   let allChannels = await getAllChannels();
   if (group !== 'all') {
@@ -139,7 +153,15 @@ async function handleLegacyHome(req: Request, res: Response) {
 
   const groups = await getAllGroups();
 
-  const host = (req.query.host as string) || (req.query.ip as string) || '';
+  const host = (req.query.host as string) || (req.query.ip as string) || (req as any).e72Host || '';
+  const resChoice = ((req.query.res as string) || '240p').toLowerCase();
+  const deviceInfo = (req as any).deviceInfo;
+  const isOperaMini = Boolean(
+    deviceInfo?.isOperaMini ||
+    /opera mini|opera mobi/i.test(req.headers['user-agent'] || '') ||
+    req.headers['x-operamini-features'] ||
+    req.headers['x-operamini-phone-ua']
+  );
 
   const html = renderLegacyHome({
     channels: paginatedChannels,
@@ -150,6 +172,8 @@ async function handleLegacyHome(req: Request, res: Response) {
     groups,
     searchQuery: query,
     host,
+    resChoice,
+    isOperaMini,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -163,15 +187,27 @@ async function handleLegacyChannel(req: Request, res: Response) {
     return res.send(renderLegacyNotFound());
   }
 
-  const host = (req.query.host as string) || (req.query.ip as string) || '';
-  const resChoice = (req.query.res as string) || '240p';
+  const host = (req.query.host as string) || (req.query.ip as string) || (req as any).e72Host || '';
+  const resChoice = ((req.query.res as string) || '240p').toLowerCase();
   const html = renderLegacyChannel(channel, host, resChoice);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
 }
 
-// Explicit legacy routes
-app.get('/legacy', (req, res) => {
+function handleCorePlayerGuide(req: Request, res: Response) {
+  const host = (req.query.host as string) || (req.query.ip as string) || (req as any).e72Host || '';
+  const resChoice = ((req.query.res as string) || '240p').toLowerCase();
+  const html = renderCorePlayerGuide(host, resChoice);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+}
+
+// Explicit legacy and Opera Mini routes
+app.get(['/legacy/guide', '/e72/guide', '/operamini/guide'], (req, res) => {
+  handleCorePlayerGuide(req, res);
+});
+
+app.get(['/legacy', '/operamini', '/e72'], (req, res) => {
   handleLegacyHome(req, res).catch(() => res.status(500).send('Lỗi máy chủ'));
 });
 

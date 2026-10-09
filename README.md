@@ -143,13 +143,13 @@ git push -u origin main
    * **Database:** `my-iptv-db` (PostgreSQL miễn phí).
    * **Web Service:** `my-iptv` (Node.js).
 5. Render tự động nối `DATABASE_URL` giữa Database và Web Service, đồng thời tạo mật khẩu ngẫu nhiên an toàn cho `ADMIN_PASSWORD`.
-6. Nhấn **Apply**. Sau khoảng 2 phút, hệ thống sẽ sẵn sàng hoạt động tại `https://my-iptv.onrender.com`.
+6. Nhấn **Apply**. Sau khoảng 2 phút, hệ thống sẽ sẵn sàng hoạt động tại `https://my-iptv-uguq.onrender.com`.
 
 ### Cách 2: Tạo Web Service Độc Lập (Không cần Database)
 1. Nhấn **New + &gt; Web Service** trên Render.
 2. Kết nối tới repository `my-iptv`.
 3. Điền các cấu hình:
-   * **Name:** `my-iptv`
+   * **Name:** `my-iptv-uguq`
    * **Region:** `Singapore`
    * **Build Command:** `npm install && npm run build`
    * **Start Command:** `npm start`
@@ -161,26 +161,38 @@ git push -u origin main
 
 ---
 
-## 7. HƯỚNG DẪN VẬN HÀNH TRÊN NOKIA E72 & COREPLAYER
+## 7. HƯỚNG DẪN VẬN HÀNH TRÊN NOKIA E72, OPERA MINI & COREPLAYER 3.36
 
-1. Mở trình duyệt web của Nokia E72 (hoặc Opera Mini).
-2. Nhập URL trang web: `http://ten-app-cua-ban.onrender.com` (hệ thống tự động phát hiện E72 và chuyển tới giao diện siêu nhẹ).
-3. **Mở qua CorePlayer:**
-   * Chọn kênh trong danh sách.
-   * Nhấn nút **`[ MỞ BẰNG COREPLAYER ]`** (đường dẫn `/open/:channelId` sẽ tự động chuyển tiếp tới URL stream).
-   * **Phương án thủ công chuẩn xác:** Sao chép chuỗi URL stream màu xanh lá cây trên màn hình &gt; Mở **CorePlayer** &gt; **Menu &gt; Open URL...** &gt; Dán (Paste) và bấm **OK**.
+Ứng dụng của bạn đã được triển khai tại: **`https://my-iptv-uguq.onrender.com`**
+
+### Bước 1: Truy cập trên Opera Mini
+1. Mở Opera Mini trên Nokia E72, nhập địa chỉ:
+   `https://my-iptv-uguq.onrender.com/legacy`
+2. Để kích hoạt CorePlayer:
+   * Nhấn nút màu xanh: **`[ ▶ MỞ BẰNG COREPLAYER (TẢI M3U) ]`**.
+   * Opera Mini hiển thị bảng thông báo tải tệp: Chọn **"Mở" (Open)**.
+   * CorePlayer 3.36 / 1.36 sẽ tự động khởi động và phát truyền hình ngay lập tức!
+
+### Bước 2: Khắc phục triệt để lỗi SSL ("HTTPS hỗ trợ các thỏa thuận không được")
+Do Render bắt buộc mã hóa HTTPS, CorePlayer trên Symbian S60 không thể bắt tay TLS 1.2+ trực tiếp. Hãy sử dụng cầu nối **`e72-relay.py`**:
+1. Trên máy tính kết nối cùng Wi-Fi với Nokia E72, tải và chạy:
+   ```bash
+   python e72-relay.py
+   ```
+   *(File script đã được cấu hình sẵn đích đến `https://my-iptv-uguq.onrender.com`, tự động tìm IP LAN như `192.168.1.15:8080`)*
+2. Trong CorePlayer, chọn **Menu > Open URL...** và nhập trực tiếp đường link siêu ngắn:
+   * **Kênh 1:** `http://192.168.1.15:8080/c/1`
+   * **Kênh 2:** `http://192.168.1.15:8080/c/2`
+   * **Kênh 3:** `http://192.168.1.15:8080/c/3`
+3. Hoặc tải toàn bộ danh sách kênh về thẻ nhớ:
+   `http://192.168.1.15:8080/api/channels/e72.m3u` (hoặc `.pls`)
 
 ---
 
 ## 8. DANH SÁCH NHỮNG VIỆC CẦN CẤU HÌNH THỦ CÔNG
 
-Sau khi đẩy mã nguồn lên GitHub và triển khai trên Render, bạn cần thực hiện các bước sau:
+Sau khi triển khai trên Render, bạn cần thực hiện:
 
-1. **Trên GitHub:**
-   * Tạo một repository mới ở chế độ **Public** hoặc **Private**.
-   * Đảm bảo không commit file `.env` chứa mật khẩu thật (file `.gitignore` đã được cấu hình sẵn).
-
-2. **Trên Render:**
-   * **Kiểm tra Health Check:** Sau khi deploy, truy cập `https://<ten-app>.onrender.com/health` để xác nhận trạng thái `{"status": "ok"}`.
-   * **Đăng nhập Admin:** Truy cập `https://<ten-app>.onrender.com/admin` bằng tài khoản bạn đã cấu hình trong Environment Variables để thêm các URL playlist IPTV yêu thích của mình.
-   * **Cập nhật Playlist:** Bấm **"Refresh All Playlists"** để hệ thống tự động tải và đồng bộ hóa danh sách kênh.
+1. **Kiểm tra Health Check:** Truy cập `https://my-iptv-uguq.onrender.com/health` để xác nhận trạng thái `{"status": "ok"}`.
+2. **Đăng nhập Admin Portal:** Truy cập `https://my-iptv-uguq.onrender.com/admin` để quản lý và nạp danh sách kênh IPTV.
+3. **Cập nhật Playlist:** Bấm **"Refresh All Playlists"** để hệ thống đồng bộ hóa luồng phát mới nhất.

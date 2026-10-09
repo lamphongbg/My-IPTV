@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { Channel, DeviceInfo } from './types/iptv';
 import { VideoPlayer } from './components/VideoPlayer';
 import { ChannelCard } from './components/ChannelCard';
@@ -7,12 +7,6 @@ import { NokiaSimulatorModal } from './components/NokiaSimulatorModal';
 import { M3uImporterModal } from './components/M3uImporterModal';
 import { CategoryScrollNav } from './components/CategoryScrollNav';
 import { AdminPortal } from './components/AdminPortal';
-import { ToastNotification, ToastItem } from './components/ToastNotification';
-import {
-  getReminders,
-  toggleReminder,
-  checkCategoryCountIncreases,
-} from './utils/reminderManager';
 import { isNokiaLightweightBrowser } from './utils/deviceHelper';
 import {
   Tv,
@@ -23,11 +17,16 @@ import {
   Shield,
   ArrowUpRight,
   RefreshCw,
-  ChevronDown
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 
 const STORAGE_FAVORITES_KEY = 'my_iptv_favorites_v1';
 const STORAGE_RECENT_KEY = 'my_iptv_recent_v1';
+const STORAGE_PAGE_SIZE_KEY = 'my_iptv_page_size_v1';
 
 export default function App() {
   const [viewMode, setViewMode] = useState<'app' | 'admin'>(() => {
@@ -37,7 +36,6 @@ export default function App() {
   // Channel & Pagination state
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [playTrigger, setPlayTrigger] = useState<number>(0);
   const [activeGroup, setActiveGroup] = useState<string>('all');
@@ -46,6 +44,18 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalMatching, setTotalMatching] = useState<number>(0);
+  const [pageSize, setPageSize] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_PAGE_SIZE_KEY);
+      if (saved === '100') return 100;
+      if (saved === '50') return 50;
+    }
+    return 50; // Default fixed 50 channels per page
+  });
+  const [jumpInput, setJumpInput] = useState<string>('');
+
+  const pageSizeRef = useRef<number>(pageSize);
+  pageSizeRef.current = pageSize;
 
   // Global Categories & System stats from server
   const [categories, setCategories] = useState<string[]>([]);
@@ -57,23 +67,11 @@ export default function App() {
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
 
-  // Reminders and Toasts state
-  const [remindedChannelIds, setRemindedChannelIds] = useState<string[]>([]);
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-
-  const addToast = useCallback((toast: Omit<ToastItem, 'id'>) => {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const newToast: ToastItem = { ...toast, id };
-    setToasts((prev) => [...prev, newToast]);
-
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
-  }, []);
-
-  const dismissToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+  // Keep stable refs so loadChannels never re-creates or re-fetches when user selects a channel
+  const favoritesRef = useRef<string[]>(favorites);
+  favoritesRef.current = favorites;
+  const recentIdsRef = useRef<string[]>(recentIds);
+  recentIdsRef.current = recentIds;
 
   // Determine whether current environment is the lightweight browser for Nokia E72
   const isNokiaLightweight = isNokiaLightweightBrowser(deviceInfo);
@@ -84,6 +82,14 @@ export default function App() {
   const [isM3uModalOpen, setIsM3uModalOpen] = useState<boolean>(false);
 
   const channelListRef = useRef<HTMLDivElement>(null);
+  const channelListScrollPosRef = useRef<number>(0);
+
+  // Preserve scroll position synchronously whenever selectedChannel changes
+  useLayoutEffect(() => {
+    if (channelListRef.current && channelListScrollPosRef.current > 0) {
+      channelListRef.current.scrollTop = channelListScrollPosRef.current;
+    }
+  }, [selectedChannel, playTrigger]);
 
   // Listen to popstate for back/forward
   useEffect(() => {
@@ -94,7 +100,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Load favorites, recent & reminders from localStorage
+  // Load favorites & recent from localStorage
   useEffect(() => {
     try {
       const savedFavs = localStorage.getItem(STORAGE_FAVORITES_KEY);
@@ -102,9 +108,6 @@ export default function App() {
 
       const savedRecent = localStorage.getItem(STORAGE_RECENT_KEY);
       if (savedRecent) setRecentIds(JSON.parse(savedRecent));
-
-      const savedReminders = getReminders();
-      setRemindedChannelIds(savedReminders.map((r) => r.channelId));
     } catch (e) {
       console.warn('Could not read localStorage:', e);
     }
@@ -133,10 +136,6 @@ export default function App() {
           setCategories(gData.groups || []);
           setGroupCounts(gData.counts || {});
           setTotalSystemChannels(gData.totalChannels || 0);
-
-          if (gData.counts) {
-            checkCategoryCountIncreases(gData.counts);
-          }
         }
       }
 
@@ -152,66 +151,14 @@ export default function App() {
     }
   }, []);
 
-  // Listen for new channel alert events from reminder system
-  useEffect(() => {
-    const handleNewChannelAlert = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail) return;
-      const { channelName, category, channelId } = detail;
-
-      addToast({
-        title: `Kênh mới trong danh mục "${category}"!`,
-        message: `Kênh "${channelName}" vừa được thêm vào hệ thống.`,
-        type: 'alert',
-        channelId,
-        category,
-        actionText: 'Xem kênh ngay',
-        onAction: channelId
-          ? () => {
-              fetch(`/api/channels/${encodeURIComponent(channelId)}`)
-                .then((r) => (r.ok ? r.json() : null))
-                .then((ch) => {
-                  if (ch) {
-                    setSelectedChannel(ch);
-                    setPlayTrigger((prev) => prev + 1);
-                  }
-                })
-                .catch(() => {});
-            }
-          : undefined,
-      });
-    };
-
-    window.addEventListener('iptv:new-channel-alert', handleNewChannelAlert);
-    return () => window.removeEventListener('iptv:new-channel-alert', handleNewChannelAlert);
-  }, [addToast]);
-
-  // Periodic background check for category channel count increases (every 30s)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetch('/api/groups')
-        .then((res) => (res.ok ? res.json() : null))
-        .then((gData) => {
-          if (gData && gData.counts) {
-            setGroupCounts(gData.counts);
-            setTotalSystemChannels(gData.totalChannels || 0);
-            checkCategoryCountIncreases(gData.counts);
-          }
-        })
-        .catch(() => {});
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
   useEffect(() => {
     fetchMetadata();
   }, [fetchMetadata]);
 
   // Server-Side Channels Fetcher with Pagination & Filtering
   const loadChannels = useCallback(
-    async (group: string, query: string, page: number = 1, append: boolean = false) => {
-      if (page === 1) setLoading(true);
-      else setLoadingMore(true);
+    async (group: string, query: string, page: number = 1, currentLimit: number = pageSizeRef.current) => {
+      setLoading(true);
 
       try {
         // Special local tabs: favorites and recent
@@ -220,7 +167,7 @@ export default function App() {
           if (res.ok) {
             const data = await res.json();
             const allItems: Channel[] = data.channels || [];
-            const targetIds = group === 'favorites' ? favorites : recentIds;
+            const targetIds = group === 'favorites' ? favoritesRef.current : recentIdsRef.current;
             let filtered = allItems.filter((c) => targetIds.includes(c.id));
 
             if (query.trim()) {
@@ -233,14 +180,18 @@ export default function App() {
               );
             }
 
-            setChannels(filtered);
-            setTotalMatching(filtered.length);
-            setCurrentPage(1);
-            setTotalPages(1);
+            const total = filtered.length;
+            const computedPages = Math.max(1, Math.ceil(total / currentLimit));
+            const validPage = Math.min(Math.max(1, page), computedPages);
+            const startIndex = (validPage - 1) * currentLimit;
+            const paginated = filtered.slice(startIndex, startIndex + currentLimit);
 
-            if (filtered.length > 0 && !selectedChannel) {
-              setSelectedChannel(filtered[0]);
-            }
+            setChannels(paginated);
+            setTotalMatching(total);
+            setCurrentPage(validPage);
+            setTotalPages(computedPages);
+
+            setSelectedChannel((prev) => prev ? prev : (paginated.length > 0 ? paginated[0] : null));
           }
           return;
         }
@@ -248,7 +199,7 @@ export default function App() {
         // Standard server-side filtering & search
         const params = new URLSearchParams();
         params.set('page', String(page));
-        params.set('limit', '60');
+        params.set('limit', String(currentLimit));
         if (group && group !== 'all') {
           params.set('group', group);
         }
@@ -261,53 +212,88 @@ export default function App() {
           const data = await res.json();
           const newChannels: Channel[] = data.channels || [];
 
-          if (append) {
-            setChannels((prev) => [...prev, ...newChannels]);
-          } else {
-            setChannels(newChannels);
-          }
-
+          setChannels(newChannels);
           setTotalMatching(data.total || 0);
           setCurrentPage(data.page || 1);
           setTotalPages(data.totalPages || 1);
 
-          if (!selectedChannel && newChannels.length > 0) {
-            setSelectedChannel(newChannels[0]);
-          }
+          setSelectedChannel((prev) => prev ? prev : (newChannels.length > 0 ? newChannels[0] : null));
         }
       } catch (err) {
         console.error('Error loading channels:', err);
       } finally {
         setLoading(false);
-        setLoadingMore(false);
       }
     },
-    [favorites, recentIds, selectedChannel]
+    []
   );
 
   // Trigger load when group or debounced query changes
   useEffect(() => {
-    loadChannels(activeGroup, debouncedQuery, 1, false);
+    loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current);
   }, [activeGroup, debouncedQuery, loadChannels]);
 
-  // Load next page
-  const handleLoadMore = () => {
-    if (currentPage < totalPages && !loadingMore) {
-      loadChannels(activeGroup, debouncedQuery, currentPage + 1, true);
+  // Change page size (fixed 50 or 100 channels per page)
+  const handleChangePageSize = (newSize: number) => {
+    setPageSize(newSize);
+    pageSizeRef.current = newSize;
+    try {
+      localStorage.setItem(STORAGE_PAGE_SIZE_KEY, String(newSize));
+    } catch (e) {
+      // ignore
+    }
+    loadChannels(activeGroup, debouncedQuery, 1, newSize);
+    if (channelListRef.current) {
+      channelListRef.current.scrollTop = 0;
     }
   };
 
-  // Handle select & play channel
+  // Jump to specific page
+  const handleGoToPage = (targetPage: number) => {
+    if (targetPage < 1 || targetPage > totalPages || targetPage === currentPage || loading) {
+      return;
+    }
+    loadChannels(activeGroup, debouncedQuery, targetPage, pageSizeRef.current);
+    if (channelListRef.current) {
+      channelListRef.current.scrollTop = 0;
+    }
+  };
+
+  const handleJumpSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const p = parseInt(jumpInput.trim(), 10);
+    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+      handleGoToPage(p);
+      setJumpInput('');
+    }
+  };
+
+  // Helper to generate page number buttons with ellipsis
+  const getPageNumbers = (): (number | string)[] => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    if (currentPage <= 4) {
+      return [1, 2, 3, 4, 5, '...', totalPages];
+    }
+    if (currentPage >= totalPages - 3) {
+      return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    }
+    return [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages];
+  };
+
+  // Handle select & play channel without resetting channel list scroll position
   const handleSelectChannel = (channel: Channel) => {
+    // 1. Capture current scroll position of the channel list container & window
+    const currentScrollTop = channelListRef.current ? channelListRef.current.scrollTop : channelListScrollPosRef.current;
+    const currentWindowY = typeof window !== 'undefined' ? window.scrollY : 0;
+    channelListScrollPosRef.current = currentScrollTop;
+
+    // 2. Select channel & increment play trigger
     setSelectedChannel(channel);
     setPlayTrigger((prev) => prev + 1);
 
-    // Scroll smoothly to player if on mobile
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    // Update recently watched list
+    // 3. Update recently watched list without resetting channel list
     setRecentIds((prev) => {
       const filtered = prev.filter((id) => id !== channel.id);
       const updated = [channel.id, ...filtered].slice(0, 12);
@@ -317,6 +303,24 @@ export default function App() {
         console.warn('LocalStorage error:', e);
       }
       return updated;
+    });
+
+    // 4. Strictly maintain channel list scroll position at the current selected channel
+    if (channelListRef.current && currentScrollTop > 0) {
+      channelListRef.current.scrollTop = currentScrollTop;
+    }
+
+    requestAnimationFrame(() => {
+      if (channelListRef.current && currentScrollTop > 0) {
+        channelListRef.current.scrollTop = currentScrollTop;
+      }
+      if (typeof window !== 'undefined' && currentWindowY > 0) {
+        window.scrollTo({ top: currentWindowY, behavior: 'instant' as any });
+      }
+      const cardEl = document.getElementById(`channel-card-${channel.id}`);
+      if (cardEl) {
+        cardEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' as any });
+      }
     });
   };
 
@@ -334,38 +338,18 @@ export default function App() {
       }
       return updated;
     });
+
+    if (activeGroup === 'favorites') {
+      const currentScrollTop = channelListRef.current ? channelListRef.current.scrollTop : null;
+      setTimeout(() => {
+        loadChannels('favorites', debouncedQuery, 1, pageSizeRef.current).then(() => {
+          if (currentScrollTop !== null && channelListRef.current) {
+            channelListRef.current.scrollTop = currentScrollTop;
+          }
+        });
+      }, 50);
+    }
   };
-
-  // Toggle reminder for channel & category
-  const handleToggleReminder = useCallback(
-    (channel: Channel, e: React.MouseEvent) => {
-      e.stopPropagation();
-      const currentCatCount = groupCounts[channel.group] || 0;
-      const result = toggleReminder(channel, currentCatCount);
-
-      setRemindedChannelIds((prev) =>
-        result.isReminded
-          ? [...prev, channel.id]
-          : prev.filter((id) => id !== channel.id)
-      );
-
-      if (result.isReminded) {
-        addToast({
-          title: 'Đã bật nhắc nhở',
-          message: `Bạn sẽ nhận được thông báo khi có kênh mới trong danh mục "${channel.group}".`,
-          type: 'reminder',
-          category: channel.group,
-        });
-      } else {
-        addToast({
-          title: 'Đã tắt nhắc nhở',
-          message: `Đã hủy nhận thông báo cho kênh "${channel.name}".`,
-          type: 'info',
-        });
-      }
-    },
-    [groupCounts, addToast]
-  );
 
   // Open Channel Detail modal
   const handleOpenDetails = (channel: Channel, e?: React.MouseEvent) => {
@@ -393,7 +377,7 @@ export default function App() {
     window.history.pushState({}, '', '/');
     setViewMode('app');
     fetchMetadata();
-    loadChannels(activeGroup, debouncedQuery, 1, false);
+    loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current);
   };
 
   // ---------------------------------------------------------------------------
@@ -645,46 +629,81 @@ export default function App() {
               recentCount={recentIds.length}
             />
 
-            {/* Active Filter Header */}
-            <div className="flex items-center justify-between text-xs px-1 text-neutral-400">
-              <span>
-                {activeGroup !== 'all' ? (
-                  <>
-                    Đang lọc nhóm: <strong className="text-amber-400">{activeGroup}</strong>
-                  </>
-                ) : (
-                  <span>Tất cả kênh</span>
-                )}
-                {debouncedQuery && (
-                  <>
-                    {' '}&bull; Từ khóa: <strong className="text-white">"{debouncedQuery}"</strong>
-                  </>
-                )}
-                {' '}&bull; Tìm thấy: <strong className="text-emerald-400">{totalMatching.toLocaleString()} kênh</strong>
-              </span>
+            {/* Active Filter & Page Size Header */}
+            <div className="flex flex-wrap items-center justify-between text-xs px-1 text-neutral-400 gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span>
+                  {activeGroup !== 'all' ? (
+                    <>
+                      Đang lọc: <strong className="text-amber-400">{activeGroup}</strong>
+                    </>
+                  ) : (
+                    <span>Tất cả kênh</span>
+                  )}
+                  {debouncedQuery && (
+                    <>
+                      {' '}&bull; Từ khóa: <strong className="text-white">"{debouncedQuery}"</strong>
+                    </>
+                  )}
+                  {' '}&bull; Tìm thấy: <strong className="text-emerald-400">{totalMatching.toLocaleString()} kênh</strong>
+                </span>
 
-              {(activeGroup !== 'all' || debouncedQuery) && (
+                {(activeGroup !== 'all' || debouncedQuery) && (
+                  <button
+                    onClick={() => {
+                      setActiveGroup('all');
+                      setSearchQuery('');
+                    }}
+                    className="text-[11px] text-rose-400 hover:underline ml-1"
+                  >
+                    (Xóa lọc)
+                  </button>
+                )}
+              </div>
+
+              {/* Page Size Setting (50 or 100 channels fixed per page) */}
+              <div className="flex items-center gap-1.5 text-[11px] bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1 shadow-sm">
+                <span className="text-neutral-500">Mỗi trang:</span>
                 <button
-                  onClick={() => {
-                    setActiveGroup('all');
-                    setSearchQuery('');
-                  }}
-                  className="text-[11px] text-rose-400 hover:underline"
+                  type="button"
+                  onClick={() => handleChangePageSize(50)}
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                    pageSize === 50
+                      ? 'bg-amber-500 text-neutral-950 shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                  title="Hiển thị cố định 50 kênh mỗi trang"
                 >
-                  Xóa bộ lọc
+                  50 kênh
                 </button>
-              )}
+                <span className="text-neutral-700">|</span>
+                <button
+                  type="button"
+                  onClick={() => handleChangePageSize(100)}
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                    pageSize === 100
+                      ? 'bg-amber-500 text-neutral-950 shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                  title="Hiển thị cố định 100 kênh mỗi trang"
+                >
+                  100 kênh
+                </button>
+              </div>
             </div>
 
             {/* Channels Grid / List with Custom Smooth Scrollbar */}
             <div
               ref={channelListRef}
+              onScroll={(e) => {
+                channelListScrollPosRef.current = e.currentTarget.scrollTop;
+              }}
               className="flex-1 flex flex-col gap-2.5 overflow-y-auto max-h-[580px] pr-1.5 custom-scrollbar"
             >
               {loading ? (
                 <div className="text-center py-16 text-neutral-500 text-xs flex flex-col items-center gap-2">
                   <RefreshCw className="w-5 h-5 animate-spin text-amber-500" />
-                  <span>Đang tải danh sách kênh...</span>
+                  <span>Đang tải trang {currentPage} ({pageSize} kênh)...</span>
                 </div>
               ) : channels.length === 0 ? (
                 <div className="text-center py-12 bg-neutral-900/40 rounded-xl border border-neutral-800 p-6">
@@ -711,40 +730,149 @@ export default function App() {
                         channel={channel}
                         isActive={selectedChannel?.id === channel.id}
                         isFavorite={favorites.includes(channel.id)}
-                        isReminded={remindedChannelIds.includes(channel.id)}
                         onSelect={handleSelectChannel}
                         onPlay={handleSelectChannel}
                         onToggleFavorite={handleToggleFavorite}
-                        onToggleReminder={handleToggleReminder}
                         onOpenDetails={(ch, e) => handleOpenDetails(ch, e)}
                         isNokiaLightweight={isNokiaLightweight}
                       />
                     ))}
                   </div>
 
-                  {/* Load More Button when there are more pages */}
-                  {currentPage < totalPages && (
-                    <div className="pt-2 pb-4 text-center">
-                      <button
-                        type="button"
-                        onClick={handleLoadMore}
-                        disabled={loadingMore}
-                        className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 hover:border-amber-500/50 rounded-xl text-xs font-semibold text-neutral-200 hover:text-white transition flex items-center justify-center gap-2 shadow-sm"
-                      >
-                        {loadingMore ? (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />
-                            <span>Đang tải thêm kênh...</span>
-                          </>
-                        ) : (
-                          <>
-                            <ChevronDown className="w-4 h-4 text-amber-500" />
-                            <span>
-                              Tải thêm 60 kênh nữa (Đang hiển thị {channels.length.toLocaleString()} / {totalMatching.toLocaleString()} kênh)
-                            </span>
-                          </>
-                        )}
-                      </button>
+                  {/* Pagination Bar */}
+                  {totalPages > 1 && (
+                    <div className="pt-3 pb-2 flex flex-col gap-2.5 border-t border-neutral-800/80 mt-2">
+                      {/* Range details & Page Size Selector */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-400">
+                        <div>
+                          <span>
+                            Trang <strong className="text-amber-400 font-bold">{currentPage}</strong> / <strong className="text-neutral-200">{totalPages.toLocaleString()}</strong>
+                          </span>
+                          <span className="text-[11px] text-neutral-500 ml-2">
+                            (Hiển thị {Math.min((currentPage - 1) * pageSize + 1, totalMatching)} &ndash; {Math.min((currentPage - 1) * pageSize + channels.length, totalMatching)} trong {totalMatching.toLocaleString()} kênh)
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 text-[11px]">
+                          <span className="text-neutral-500">Hiển thị:</span>
+                          <div className="flex items-center bg-neutral-900 border border-neutral-800 rounded-lg p-0.5">
+                            <button
+                              type="button"
+                              onClick={() => handleChangePageSize(50)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                                pageSize === 50
+                                  ? 'bg-amber-500 text-neutral-950'
+                                  : 'text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              50 / trang
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleChangePageSize(100)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                                pageSize === 100
+                                  ? 'bg-amber-500 text-neutral-950'
+                                  : 'text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              100 / trang
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pagination Action Controls */}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        {/* Page Buttons */}
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handleGoToPage(1)}
+                            disabled={currentPage === 1 || loading}
+                            className="px-2 py-1 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 text-neutral-300 border border-neutral-800 rounded-lg text-xs font-medium transition flex items-center gap-0.5"
+                            title="Trang đầu tiên"
+                          >
+                            <ChevronsLeft className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Đầu</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleGoToPage(currentPage - 1)}
+                            disabled={currentPage === 1 || loading}
+                            className="px-2 py-1 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 text-neutral-300 border border-neutral-800 rounded-lg text-xs font-medium transition flex items-center gap-0.5"
+                            title="Trang trước"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                            <span>Trước</span>
+                          </button>
+
+                          {/* Page numbers window */}
+                          {getPageNumbers().map((p, idx) =>
+                            p === '...' ? (
+                              <span key={`dots-${idx}`} className="px-1 text-neutral-600 text-xs select-none">
+                                ...
+                              </span>
+                            ) : (
+                              <button
+                                key={`page-${p}`}
+                                type="button"
+                                onClick={() => handleGoToPage(Number(p))}
+                                disabled={loading}
+                                className={`min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-semibold transition border ${
+                                  currentPage === p
+                                    ? 'bg-amber-500 text-neutral-950 border-amber-400 shadow-sm font-bold'
+                                    : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-800 hover:border-neutral-700'
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            )
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleGoToPage(currentPage + 1)}
+                            disabled={currentPage === totalPages || loading}
+                            className="px-2 py-1 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 text-neutral-300 border border-neutral-800 rounded-lg text-xs font-medium transition flex items-center gap-0.5"
+                            title="Trang kế tiếp"
+                          >
+                            <span>Tiếp</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleGoToPage(totalPages)}
+                            disabled={currentPage === totalPages || loading}
+                            className="px-2 py-1 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 text-neutral-300 border border-neutral-800 rounded-lg text-xs font-medium transition flex items-center gap-0.5"
+                            title="Trang cuối cùng"
+                          >
+                            <span className="hidden sm:inline">Cuối</span>
+                            <ChevronsRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Jump to Page Form */}
+                        <form onSubmit={handleJumpSubmit} className="flex items-center gap-1.5 text-xs">
+                          <span className="text-neutral-500 text-[11px]">Đến trang:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={totalPages}
+                            value={jumpInput}
+                            onChange={(e) => setJumpInput(e.target.value)}
+                            placeholder={String(currentPage)}
+                            className="w-14 px-1.5 py-1 bg-neutral-900 border border-neutral-800 rounded-lg text-center text-xs text-white focus:outline-none focus:border-amber-500"
+                          />
+                          <button
+                            type="submit"
+                            disabled={loading || !jumpInput}
+                            className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 text-neutral-200 border border-neutral-700 rounded-lg text-xs font-medium transition"
+                          >
+                            Đi
+                          </button>
+                        </form>
+                      </div>
                     </div>
                   )}
                 </>
@@ -792,9 +920,6 @@ export default function App() {
         onClose={() => setIsM3uModalOpen(false)}
         onImportChannels={handleImportChannels}
       />
-
-      {/* Local Channel Reminders & Category Alert Toasts */}
-      <ToastNotification toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

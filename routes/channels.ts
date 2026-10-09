@@ -15,7 +15,28 @@ export async function getAllChannels(): Promise<Channel[]> {
 }
 
 export async function getChannelById(id: string): Promise<Channel | null> {
-  return await getChannelFromDb(id);
+  if (!id) return null;
+  const cleanId = id.replace(/\.(m3u|m3u8|pls|ts)$/i, '').trim();
+
+  // 1. Direct DB lookup by ID
+  const direct = await getChannelFromDb(cleanId);
+  if (direct) return direct;
+
+  // 2. Lookup by numeric index (1-based: 1 = channel 1, 2 = channel 2...)
+  const num = parseInt(cleanId, 10);
+  const all = await getAllActiveChannels();
+  if (!isNaN(num) && num > 0 && num <= all.length) {
+    return all[num - 1];
+  }
+
+  // 3. Lookup by slug/name match
+  const normalized = cleanId.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const matched = all.find(
+    (c) =>
+      c.id.toLowerCase() === cleanId.toLowerCase() ||
+      c.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalized
+  );
+  return matched || null;
 }
 
 export async function getAllGroups(): Promise<string[]> {
@@ -107,13 +128,34 @@ router.get('/api/channels', async (req: Request, res: Response) => {
   }
 });
 
-// Export dynamic M3U playlist file for VLC / CorePlayer / Nokia E72
+// Helper to extract custom LAN host from query or e72_host cookie
+function extractE72Host(req: Request): string {
+  const queryHost = (req.query.host as string) || (req.query.ip as string) || (req.headers['x-custom-host'] as string);
+  if (queryHost && queryHost.trim()) return queryHost.trim();
+  const cookieHeader = req.headers.cookie || '';
+  const match = cookieHeader.match(/(?:^|;\s*)e72_host=([^;]+)/);
+  if (match) {
+    try {
+      return decodeURIComponent(match[1]).trim();
+    } catch {
+      return match[1].trim();
+    }
+  }
+  return '';
+}
+
+// Export dynamic M3U and PLS playlist files for VLC / CorePlayer / Nokia E72
 router.get(
   [
     '/playlist.m3u',
+    '/playlist.pls',
     '/data/channels.m3u',
     '/api/channels/coreplayer.m3u',
+    '/api/channels/coreplayer.pls',
     '/api/channels/e72.m3u',
+    '/api/channels/e72.pls',
+    '/playlist_e72.m3u',
+    '/playlist_e72.pls',
   ],
   async (req: Request, res: Response) => {
     try {
@@ -123,20 +165,46 @@ router.get(
         req.path.includes('e72') ||
         req.query.target === 'coreplayer' ||
         req.query.profile === 'e72';
+      const isPls = req.path.endsWith('.pls');
 
       if (isCorePlayer) {
         // CorePlayer on Nokia E72 (Symbian S60) CANNOT negotiate modern TLS 1.2/1.3 handshakes!
         // Connecting to HTTPS causes Symbian error: "HTTPS hỗ trợ các thỏa thuận không được".
         // Therefore, CorePlayer playlists must strictly use plain 'http://' and support custom LAN IP.
-        const customHost = (req.query.host as string) || (req.query.ip as string) || (req.headers['x-custom-host'] as string);
+        const customHost = extractE72Host(req);
         const host = customHost || req.get('host') || '127.0.0.1:3000';
         const proto = (req.query.proto as string) || 'http'; // Force plain HTTP for CorePlayer
+        const resChoice = ((req.query.res as string) || '240p').toLowerCase();
+        const resParam = `?res=${resChoice}`;
 
+        if (isPls) {
+          // Standard PLS (SHOUTcast / Winamp Playlist) supported by CorePlayer 1.36
+          let plsBody = `[playlist]\r\nNumberOfEntries=${channels.length}\r\n`;
+          for (let i = 0; i < channels.length; i++) {
+            const ch = channels[i];
+            const idx = i + 1;
+            const safeName = sanitizeM3uFilename(ch.name, `ch_${ch.id}`);
+            const streamUrl = `${proto}://${host}/c/${idx}${resParam}`;
+            plsBody += `File${idx}=${streamUrl}\r\nTitle${idx}=${idx}. ${safeName} [${resChoice.toUpperCase()}]\r\nLength${idx}=-1\r\n`;
+          }
+          plsBody += `Version=2\r\n`;
+
+          res.setHeader('Content-Type', 'audio/x-scpls; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+          res.setHeader('Content-Disposition', 'attachment; filename="nokia_e72_playlist.pls"');
+          return res.send(Buffer.from(plsBody, 'utf-8'));
+        }
+
+        // Standard M3U for CorePlayer
         let body = '#EXTM3U\r\n';
-        for (const ch of channels) {
+        for (let i = 0; i < channels.length; i++) {
+          const ch = channels[i];
+          const idx = i + 1;
           const safeName = sanitizeM3uFilename(ch.name, `ch_${ch.id}`);
-          const streamUrl = `${proto}://${host}/api/channel/${encodeURIComponent(ch.id)}/e72.ts`;
-          body += `#EXTINF:0,${safeName}\r\n${streamUrl}\r\n`;
+          const streamUrl = `${proto}://${host}/c/${idx}${resParam}`;
+          body += `#EXTINF:0,${idx}. ${safeName} [${resChoice.toUpperCase()}]\r\n${streamUrl}\r\n`;
         }
         res.setHeader('Content-Type', 'audio/x-mpegurl; charset=utf-8');
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -147,6 +215,19 @@ router.get(
           'attachment; filename="nokia_e72_playlist.m3u"'
         );
         return res.send(Buffer.from(body, 'utf-8'));
+      }
+
+      if (isPls) {
+        let plsBody = `[playlist]\r\nNumberOfEntries=${channels.length}\r\n`;
+        for (let i = 0; i < channels.length; i++) {
+          const ch = channels[i];
+          const idx = i + 1;
+          plsBody += `File${idx}=${ch.stream_url}\r\nTitle${idx}=${ch.name}\r\nLength${idx}=-1\r\n`;
+        }
+        plsBody += `Version=2\r\n`;
+        res.setHeader('Content-Type', 'audio/x-scpls; charset=utf-8');
+        res.setHeader('Content-Disposition', 'inline; filename="playlist.pls"');
+        return res.send(Buffer.from(plsBody, 'utf-8'));
       }
 
       const m3u = generateM3U(channels);
@@ -187,15 +268,26 @@ function sanitizeM3uFilename(name: string, fallback: string = 'channel'): string
 }
 
 // Live MPEG-TS stream endpoint specifically designed for CorePlayer & Nokia E72 (Symbian S60)
-// - /e72.ts: Transcodes on-the-fly to QVGA 320x240, H.264 Baseline L1.3, AAC 64k (Smooth on ARM11 600MHz CPU)
+// - /e72.ts, /c/:id, /s/:id: Transcodes on-the-fly to QVGA 320x240, H.264 Baseline L1.3, AAC 48k (Smooth on ARM11 600MHz CPU)
 // - /live.ts: Remuxes on-the-fly with "-c copy" (Lightweight, preserves original resolution)
 router.get(
   [
     '/api/channel/:id/e72.ts',
     '/api/channel/:id/live.ts',
-    '/api/channel/:id/stream.ts'
+    '/api/channel/:id/stream.ts',
+    '/c/:id',
+    '/c/:id.ts',
+    '/s/:id',
+    '/s/:id.ts',
+    '/channel/:id.ts',
+    '/live/:id.ts',
   ],
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response, next: any) => {
+    // If request has playlist extension, let the playlist handler handle it
+    if (req.path.endsWith('.m3u') || req.path.endsWith('.m3u8') || req.path.endsWith('.pls')) {
+      return next();
+    }
+
     try {
       const channel = await getChannelById(req.params.id);
       if (!channel) {
@@ -212,7 +304,7 @@ router.get(
       res.setHeader('Access-Control-Allow-Origin', '*');
 
       const resQuery = ((req.query.res as string) || (req.query.resolution as string) || (req.query.profile as string) || '').toLowerCase();
-      const isE72Endpoint = req.path.includes('e72');
+      const isE72Endpoint = req.path.includes('e72') || req.path.startsWith('/c/') || req.path.startsWith('/s/');
       const isLiveEndpoint = req.path.includes('live');
 
       // Determine transcoding profile:
@@ -246,11 +338,15 @@ router.get(
 
       if (profile === 'copy') {
         ffmpegArgs = [
-          '-re',
+          '-fflags', '+nobuffer+discardcorrupt',
+          '-analyzeduration', '1500000',
+          '-probesize', '1500000',
           '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
           '-i', streamUrl,
           '-c', 'copy',
           '-f', 'mpegts',
+          '-mpegts_flags', '+resend_headers',
+          '-flush_packets', '1',
           'pipe:1'
         ];
       } else {
@@ -263,7 +359,9 @@ router.get(
         }[profile];
 
         ffmpegArgs = [
-          '-re',
+          '-fflags', '+nobuffer+discardcorrupt',
+          '-analyzeduration', '1500000',
+          '-probesize', '1500000',
           '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
           '-i', streamUrl,
           '-vf', `scale=${config.w}:${config.h}:force_original_aspect_ratio=decrease,pad=${config.w}:${config.h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`,
@@ -276,11 +374,17 @@ router.get(
           '-maxrate', config.maxV,
           '-bufsize', config.buf,
           '-r', config.fps,
+          '-g', `${parseInt(config.fps, 10) * 2}`, // IDR keyframe every 2 seconds for instant tune-in
+          '-keyint_min', `${config.fps}`,
+          '-sc_threshold', '0',
           '-c:a', 'aac',
+          '-profile:a', 'aac_low',
           '-b:a', config.bA,
           '-ar', config.ar,
           '-ac', '2',
           '-f', 'mpegts',
+          '-mpegts_flags', '+resend_headers',
+          '-flush_packets', '1',
           'pipe:1'
         ];
       }
@@ -329,7 +433,7 @@ router.get(
   }
 );
 
-// Export single-channel M3U / M3U8 playlist file for VLC Media Player and Nokia CorePlayer
+// Export single-channel M3U / M3U8 / PLS playlist file for VLC Media Player and Nokia CorePlayer
 router.get(
   [
     '/api/channel/:id/vlc.m3u',
@@ -337,7 +441,13 @@ router.get(
     '/api/channel/:id/stream.m3u',
     '/api/channel/:id/stream.m3u8',
     '/api/channel/:id/coreplayer.m3u',
+    '/api/channel/:id/coreplayer.pls',
     '/api/channel/:id/e72.m3u',
+    '/api/channel/:id/e72.pls',
+    '/c/:id.m3u',
+    '/c/:id.pls',
+    '/s/:id.m3u',
+    '/s/:id.pls',
   ],
   async (req: Request, res: Response) => {
     try {
@@ -346,7 +456,8 @@ router.get(
         return res.status(404).send('#EXTM3U\r\n# Kênh không tồn tại\r\n');
       }
       const isM3u8 = req.path.endsWith('.m3u8');
-      const isCorePlayer = req.path.includes('coreplayer') || req.path.includes('e72');
+      const isPls = req.path.endsWith('.pls');
+      const isCorePlayer = req.path.includes('coreplayer') || req.path.includes('e72') || req.path.startsWith('/c/') || req.path.startsWith('/s/') || isPls;
       const safeAsciiName = sanitizeM3uFilename(channel.name, `channel_${channel.id}`);
       const cleanDisplayName = channel.name.replace(/["\r\n]/g, '').trim();
 
@@ -359,8 +470,18 @@ router.get(
       const resQuery = ((req.query.res as string) || (req.query.resolution as string) || '').toLowerCase();
       const resParam = resQuery ? `?res=${encodeURIComponent(resQuery)}` : '';
 
-      const e72TsUrl = `${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts${resParam}`;
+      const e72TsUrl = `${proto}://${host}/c/${encodeURIComponent(channel.id)}${resParam}`;
       const liveTsUrl = `${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
+
+      if (isPls) {
+        const plsBody = `[playlist]\r\nNumberOfEntries=1\r\nFile1=${e72TsUrl}\r\nTitle1=${safeAsciiName} [${(resQuery || '240p').toUpperCase()}]\r\nLength1=-1\r\nVersion=2\r\n`;
+        res.setHeader('Content-Type', 'audio/x-scpls; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeAsciiName}_e72.pls"`);
+        return res.send(Buffer.from(plsBody, 'utf-8'));
+      }
 
       let m3uBody: string;
 
@@ -374,15 +495,15 @@ router.get(
         let entries = `#EXTM3U\r\n`;
         // Selected or default resolution first
         if (resQuery === '180p') {
-          entries += `#EXTINF:0,${safeAsciiName} [180p Sieu Nhe - Mang Yeu 2G-3G]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=180p\r\n`;
-          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=240p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [180p Sieu Nhe - Mang Yeu 2G-3G]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=180p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=240p\r\n`;
         } else if (resQuery === '360p') {
-          entries += `#EXTINF:0,${safeAsciiName} [360p SD - Man Hinh Lon]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=360p\r\n`;
-          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=240p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [360p SD - Man Hinh Lon]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=360p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=240p\r\n`;
         } else {
-          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72 - Muot Ma]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=240p\r\n`;
-          entries += `#EXTINF:0,${safeAsciiName} [180p Sieu Nhe - Tai Nhanh Mang Yeu]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=180p\r\n`;
-          entries += `#EXTINF:0,${safeAsciiName} [360p SD - Net Hon]\r\n${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/e72.ts?res=360p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [240p QVGA Chuan E72 - Muot Ma]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=240p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [180p Sieu Nhe - Tai Nhanh Mang Yeu]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=180p\r\n`;
+          entries += `#EXTINF:0,${safeAsciiName} [360p SD - Net Hon]\r\n${proto}://${host}/c/${encodeURIComponent(channel.id)}?res=360p\r\n`;
         }
         entries += `#EXTINF:0,${safeAsciiName} [Goc MPEG-TS Khong Nen]\r\n${liveTsUrl}\r\n`;
         if (channel.stream_url && channel.stream_url.startsWith('http://')) {

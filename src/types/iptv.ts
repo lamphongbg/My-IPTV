@@ -44,6 +44,7 @@ export type DeviceType = 'NOKIA_S60' | 'MOBILE_MODERN' | 'TABLET' | 'DESKTOP' | 
 export interface DeviceInfo {
   type: DeviceType;
   isNokiaS60: boolean;
+  isOperaMini?: boolean;
   isMobile: boolean;
   userAgent: string;
   recommendedView: 'legacy' | 'modern';
