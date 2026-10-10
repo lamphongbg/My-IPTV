@@ -216,6 +216,38 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
                 <Download className="w-3.5 h-3.5 opacity-70" />
               </a>
 
+              {/* Direct Launcher for CorePlayer */}
+              <a
+                href={`/play/coreplayer/${encodeURIComponent(channel.id)}`}
+                className="p-2.5 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-800/50 text-emerald-200 rounded-lg font-medium flex items-center justify-between transition"
+                title="Khởi chạy trực tiếp CorePlayer trên Nokia E72 (MIME inline)"
+              >
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-emerald-400" />
+                  <div>
+                    <span>Mở CorePlayer (Trực tiếp)</span>
+                    <div className="text-[10px] text-emerald-300/80 font-normal">Kích hoạt ứng dụng trên E72</div>
+                  </div>
+                </div>
+                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+              </a>
+
+              {/* Direct Launcher for RealPlayer */}
+              <a
+                href={`/play/realplayer/${encodeURIComponent(channel.id)}`}
+                className="p-2.5 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-800/50 text-rose-200 rounded-lg font-medium flex items-center justify-between transition"
+                title="Khởi chạy trực tiếp RealPlayer trên Nokia E72 (RAM inline)"
+              >
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-rose-400" />
+                  <div>
+                    <span>Mở RealPlayer (Trực tiếp)</span>
+                    <div className="text-[10px] text-rose-300/80 font-normal">App gốc trong ROM E72</div>
+                  </div>
+                </div>
+                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+              </a>
+
               <a
                 href={`/open/${encodeURIComponent(channel.id)}`}
                 className="p-2.5 bg-amber-950/40 hover:bg-amber-900/50 border border-amber-800/50 text-amber-200 rounded-lg font-medium flex items-center justify-between transition"

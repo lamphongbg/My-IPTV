@@ -14,6 +14,7 @@ Cách dùng:
    http://[IP-Máy-Tính]:8080/c/1
 """
 
+import os
 import sys
 import socket
 import http.server
@@ -26,7 +27,7 @@ class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
 
 DEFAULT_PORT = 8080
-DEFAULT_TARGET = "https://my-iptv-uguq.onrender.com"
+DEFAULT_TARGET = os.environ.get("TARGET_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "https://my-iptv-uguq.onrender.com"
 
 # Lấy cổng và máy chủ đích từ dòng lệnh nếu có: python e72-relay.py [target_url] [port]
 TARGET = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].startswith("http") else DEFAULT_TARGET

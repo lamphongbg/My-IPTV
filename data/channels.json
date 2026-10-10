@@ -10,9 +10,9 @@
     "audio_codec": "aac",
     "resolution": "1080p",
     "status": "active",
-    "description": "Khả dụng (Ping 344ms, 9/10/2026)",
+    "description": "Khả dụng (Ping 395ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T17:06:42.980Z"
+    "updated_at": "2026-10-10T17:16:19.283Z"
   },
   {
     "id": "dongnai1",
@@ -25,9 +25,9 @@
     "audio_codec": "aac",
     "resolution": "720p",
     "status": "active",
-    "description": "Kênh thời sự chính luận và tin tức xã hội Đài PT-TH Đồng Nai.",
+    "description": "Khả dụng (Ping 345ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:19.242Z"
   },
   {
     "id": "cantho2",
@@ -40,9 +40,9 @@
     "audio_codec": "aac",
     "resolution": "1080p",
     "status": "active",
-    "description": "Kênh truyền hình Khoa giáo - Giải trí khu vực Tây Nam Bộ.",
+    "description": "Khả dụng (Ping 523ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:19.422Z"
   },
   {
     "id": "dongnai2",
@@ -55,9 +55,9 @@
     "audio_codec": "aac",
     "resolution": "720p",
     "status": "active",
-    "description": "Kênh chuyên biệt Thể thao & Giải trí truyền hình Đồng Nai.",
+    "description": "Khả dụng (Ping 422ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:19.324Z"
   },
   {
     "id": "hatinh",
@@ -70,9 +70,9 @@
     "audio_codec": "aac",
     "resolution": "720p",
     "status": "active",
-    "description": "Đài PT-TH Hà Tĩnh trực tuyến 24/7.",
+    "description": "Khả dụng (Ping 1454ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:20.357Z"
   },
   {
     "id": "nasa-tv",
@@ -85,9 +85,9 @@
     "audio_codec": "aac",
     "resolution": "1080p",
     "status": "active",
-    "description": "Kênh khoa học vũ trụ, truyền hình trực tiếp các vụ phóng tàu và trạm không gian ISS của NASA.",
+    "description": "Khả dụng (Ping 757ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:19.661Z"
   },
   {
     "id": "dw-news-en",
@@ -100,9 +100,9 @@
     "audio_codec": "aac",
     "resolution": "1080p",
     "status": "active",
-    "description": "Kênh tin tức toàn cầu tiếng Anh của hãng thông tấn Deutsche Welle (Đức).",
+    "description": "Khả dụng (Ping 627ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:19.532Z"
   },
   {
     "id": "bloomberg",
@@ -115,9 +115,9 @@
     "audio_codec": "aac",
     "resolution": "1080p",
     "status": "active",
-    "description": "Kênh truyền hình tài chính, chứng khoán và kinh tế toàn cầu số 1 thế giới.",
+    "description": "Khả dụng (Ping 474ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:19.380Z"
   },
   {
     "id": "redbull-tv",
@@ -130,9 +130,9 @@
     "audio_codec": "aac",
     "resolution": "1080p",
     "status": "active",
-    "description": "Kênh thể thao mạo hiểm, đua xe, nhảy dù, lướt sóng và âm nhạc quốc tế đỉnh cao.",
+    "description": "Khả dụng (Ping 76ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:18.997Z"
   },
   {
     "id": "arirang",
@@ -145,9 +145,9 @@
     "audio_codec": "aac",
     "resolution": "1080p",
     "status": "active",
-    "description": "Kênh truyền hình văn hóa, âm nhạc K-Pop và đời sống Hàn Quốc phát sóng toàn cầu.",
+    "description": "Khả dụng (Ping 547ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:19.458Z"
   },
   {
     "id": "france24-en",
@@ -159,10 +159,10 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "720p",
-    "status": "active",
-    "description": "Kênh truyền hình tin tức quốc tế hàng đầu từ Pháp.",
+    "status": "offline",
+    "description": "Không khả dụng: HTTP 404 (Kênh không tồn tại / Link chết) (10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:20.486Z"
   },
   {
     "id": "nhk-world",
@@ -174,10 +174,10 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "720p",
-    "status": "active",
-    "description": "Kênh truyền hình quốc tế của đài truyền hình công cộng Nhật Bản.",
+    "status": "offline",
+    "description": "Không khả dụng: fetch failed (10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:19.495Z"
   },
   {
     "id": "big-buck-bunny",
@@ -190,9 +190,9 @@
     "audio_codec": "aac",
     "resolution": "1080p",
     "status": "active",
-    "description": "Kênh luồng thử nghiệm HLS chuẩn quốc tế mã nguồn mở (Big Buck Bunny).",
+    "description": "Khả dụng (Ping 263ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:19.580Z"
   },
   {
     "id": "tears-of-steel",
@@ -205,9 +205,9 @@
     "audio_codec": "aac",
     "resolution": "1080p",
     "status": "active",
-    "description": "Luồng thử nghiệm độ trễ thấp và đa chất lượng.",
+    "description": "Khả dụng (Ping 1933ms, 10/10/2026)",
     "playlist_id": "default-playlist",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.310Z"
   },
   {
     "id": "pl-1791380612047-ss1k6-00sreplay-us-sd-1",
@@ -221,8 +221,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:20.526Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-1plus1international-ua-sd-2",
@@ -237,7 +238,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.130Z",
+    "description": "Khả dụng (Ping 1674ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-1plus1international-ua-hd-3",
@@ -252,7 +254,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.054Z",
+    "description": "Khả dụng (Ping 1562ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-1plus1marafon-ua-sd-4",
@@ -267,7 +270,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.091Z",
+    "description": "Khả dụng (Ping 1562ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-1plus1ukraina-ua-sd-5",
@@ -282,7 +286,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:20.745Z",
+    "description": "Khả dụng (Ping 1178ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-123tv-de-sd-6",
@@ -297,7 +302,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.274Z",
+    "description": "Khả dụng (Ping 1660ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-1almeretv-nl-sd-7",
@@ -312,7 +318,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:23.936Z",
+    "description": "Khả dụng (Ping 4241ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-1hdmusictelevision-ru-hd-8",
@@ -327,7 +334,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:20.939Z",
+    "description": "Khả dụng (Ping 547ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-1kzntv-za-sd-9",
@@ -342,7 +350,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.492Z",
+    "description": "Khả dụng (Ping 970ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-1tv-ge-sd-10",
@@ -357,7 +366,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.846Z",
+    "description": "Khả dụng (Ping 1281ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-1twentetv-nl-sd-11",
@@ -372,7 +382,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:22.427Z",
+    "description": "Khả dụng (Ping 1648ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-2plus2-ua-sd-12",
@@ -387,7 +398,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.349Z",
+    "description": "Khả dụng (Ping 372ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-2plus2marathon-ua-sd-13",
@@ -401,8 +413,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:21.184Z",
+    "description": "Không khả dụng: HTTP 404 (Kênh không tồn tại / Link chết) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-2gb-au-sd-14",
@@ -417,7 +430,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.223Z",
+    "description": "Khả dụng (Ping 95ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-2m-ma-sd-15",
@@ -432,7 +446,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.884Z",
+    "description": "Khả dụng (Ping 718ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-2mmonde-ma-sd-16",
@@ -446,8 +461,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:21.403Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-2mmonde-ma-plus1-17",
@@ -462,7 +478,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:21.924Z",
+    "description": "Khả dụng (Ping 652ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-2tv-ge-sd-18",
@@ -477,7 +494,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:22.626Z",
+    "description": "Khả dụng (Ping 1319ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-2x2-ru-sd-19",
@@ -492,7 +510,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:22.274Z",
+    "description": "Khả dụng (Ping 931ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3abncanada-ca-sd-20",
@@ -507,7 +526,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:23.028Z",
+    "description": "Khả dụng (Ping 1642ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3abnenglish-us-sd-21",
@@ -522,7 +542,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:22.968Z",
+    "description": "Khả dụng (Ping 1532ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3abnfrench-us-sd-22",
@@ -537,7 +558,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:23.065Z",
+    "description": "Khả dụng (Ping 1538ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3abninternational-us-sd-23",
@@ -552,7 +574,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:23.428Z",
+    "description": "Khả dụng (Ping 1547ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3abnkids-us-sd-24",
@@ -567,7 +590,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:23.531Z",
+    "description": "Khả dụng (Ping 1609ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3abnlatino-us-sd-25",
@@ -582,7 +606,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:22.473Z",
+    "description": "Khả dụng (Ping 515ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3abnpraisehimmusicnetwork-us-sd-26",
@@ -597,7 +622,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:23.823Z",
+    "description": "Khả dụng (Ping 1513ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3abnproclaimnetwork-us-sd-27",
@@ -612,7 +638,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:24.028Z",
+    "description": "Khả dụng (Ping 1563ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3abnrussia-ru-sd-28",
@@ -627,7 +654,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:24.470Z",
+    "description": "Khả dụng (Ping 1962ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3abntvuganda-ug-sd-29",
@@ -641,8 +669,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:24.180Z",
+    "description": "Không khả dụng: HTTP 404 (Kênh không tồn tại / Link chết) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3aw-au-sd-30",
@@ -657,7 +686,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:23.239Z",
+    "description": "Khả dụng (Ping 236ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3catcameresdeltemps-es-sd-31",
@@ -672,7 +702,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:24.143Z",
+    "description": "Khả dụng (Ping 1080ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3catexclusiu1-es-sd-32",
@@ -686,8 +717,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:23.864Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3catexclusiu2-es-sd-33",
@@ -701,8 +733,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:24.067Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3catexclusiu3-es-sd-34",
@@ -716,8 +749,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:24.252Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3catplatsbruts-es-sd-35",
@@ -732,7 +766,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:24.290Z",
+    "description": "Khả dụng (Ping 721ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3catinfo-es-sd-36",
@@ -747,7 +782,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:24.809Z",
+    "description": "Khả dụng (Ping 951ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3hd-th-sd-37",
@@ -762,7 +798,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:24.414Z",
+    "description": "Khả dụng (Ping 516ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3sat-de-sd-38",
@@ -777,7 +814,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:25.608Z",
+    "description": "Khả dụng (Ping 1638ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-3stonestv-ke-sd-39",
@@ -791,8 +829,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:25.265Z",
+    "description": "Không khả dụng: HTTP 404 (Kênh không tồn tại / Link chết) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4afghanistan-fr-sd-40",
@@ -806,8 +845,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:25.647Z",
+    "description": "Không khả dụng: fetch failed (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4dmasnoticiastv-py-sd-41",
@@ -836,8 +876,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:24.216Z",
+    "description": "Không khả dụng: fetch failed (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4evercinema-ua-sd-43",
@@ -852,7 +893,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:24.674Z",
+    "description": "Khả dụng (Ping 422ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4everdrama-ua-sd-44",
@@ -867,7 +909,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:25.340Z",
+    "description": "Khả dụng (Ping 1052ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4evermusic-ua-sd-45",
@@ -882,7 +925,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:25.304Z",
+    "description": "Khả dụng (Ping 980ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4evertheater-ua-sd-46",
@@ -897,7 +941,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:25.411Z",
+    "description": "Khả dụng (Ping 961ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4fundance-pl-sd-47",
@@ -912,7 +957,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.876Z"
+    "updated_at": "2026-10-10T17:16:25.171Z",
+    "description": "Khả dụng (Ping 667ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4funkids-pl-sd-48",
@@ -926,8 +972,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:25.797Z",
+    "description": "Không khả dụng: HTTP 404 (Kênh không tồn tại / Link chết) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4funtv-pl-sd-49",
@@ -941,8 +988,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:27.317Z",
+    "description": "Không khả dụng: HTTP 404 (Kênh không tồn tại / Link chết) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4kurd-fr-sd-50",
@@ -957,7 +1005,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:26.420Z",
+    "description": "Khả dụng (Ping 1158ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4music-fr-sd-51",
@@ -972,7 +1021,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:26.381Z",
+    "description": "Khả dụng (Ping 1080ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4sidestv-in-sd-52",
@@ -987,7 +1037,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:25.682Z",
+    "description": "Khả dụng (Ping 344ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4tvnews-in-sd-53",
@@ -1001,8 +1052,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:26.022Z",
+    "description": "Không khả dụng: fetch failed (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-4utv-tr-sd-54",
@@ -1017,7 +1069,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:26.457Z",
+    "description": "Khả dụng (Ping 1012ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5aabtv-ca-sd-55",
@@ -1032,7 +1085,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:26.343Z",
+    "description": "Khả dụng (Ping 702ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5cops-us-uk-56",
@@ -1047,7 +1101,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:26.291Z",
+    "description": "Khả dụng (Ping 611ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5gold-il-sd-57",
@@ -1061,8 +1116,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:26.856Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5live-il-sd-58",
@@ -1076,8 +1132,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:26.603Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5minuttishiny-ru-sd-59",
@@ -1092,7 +1149,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:28.094Z",
+    "description": "Khả dụng (Ping 2035ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5plus-il-sd-60",
@@ -1106,8 +1164,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:27.067Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5plus-mm-sd-61",
@@ -1121,8 +1180,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:26.738Z",
+    "description": "Không khả dụng: HTTP 530 (Máy chủ nguồn IPTV bị lỗi) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5sport4k-il-sd-62",
@@ -1136,8 +1196,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:27.165Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5sport-il-sd-63",
@@ -1151,8 +1212,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:27.242Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5stars-il-sd-64",
@@ -1166,8 +1228,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:27.203Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-5tv-ar-sd-65",
@@ -1182,7 +1245,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:28.016Z",
+    "description": "Khả dụng (Ping 1377ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-6pr-au-sd-66",
@@ -1197,7 +1261,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:27.417Z",
+    "description": "Khả dụng (Ping 642ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-6sotok-ua-sd-67",
@@ -1212,7 +1277,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:27.280Z",
+    "description": "Khả dụng (Ping 387ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-6ter-fr-sd-68",
@@ -1226,8 +1292,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:27.742Z",
+    "description": "Không khả dụng: HTTP 403 (Chặn quyền truy cập / Token hết hạn) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-6tvgorlovka-ru-sd-69",
@@ -1242,7 +1309,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:27.968Z",
+    "description": "Khả dụng (Ping 767ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-6tvtelugu-in-sd-70",
@@ -1257,7 +1325,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:27.375Z",
+    "description": "Khả dụng (Ping 136ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-6wisetv-us-sd-71",
@@ -1286,8 +1355,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:28.055Z",
+    "description": "Không khả dụng: HTTP 404 (Kênh không tồn tại / Link chết) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-7gold-it-sd-73",
@@ -1301,8 +1371,9 @@
     "video_codec": "h264",
     "audio_codec": "aac",
     "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "status": "offline",
+    "updated_at": "2026-10-10T17:16:28.397Z",
+    "description": "Không khả dụng: HTTP 404 (Kênh không tồn tại / Link chết) (10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-7info-ci-sd-74",
@@ -1317,7 +1388,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:28.167Z",
+    "description": "Khả dụng (Ping 757ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-7news-pk-sd-75",
@@ -1362,7 +1434,8 @@
     "audio_codec": "aac",
     "resolution": "HD",
     "status": "active",
-    "updated_at": "2026-10-09T14:33:26.877Z"
+    "updated_at": "2026-10-10T17:16:28.330Z",
+    "description": "Khả dụng (Ping 326ms, 10/10/2026)"
   },
   {
     "id": "pl-1791380612047-ss1k6-7thheaven-se-se-78",
@@ -60262,6 +60335,10 @@
     "logo": "https://i.imgur.com/p24tAjs.jpg",
     "playlist_id": "default-playlist",
     "stream_url": "http://144.217.14.88/hls/hope4life.m3u8",
+    "format": "hls",
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "resolution": /hls/hope4life.m3u8",
     "format": "hls",
     "video_codec": "h264",
     "audio_codec": "aac",
@@ -167784,9 +167861,4 @@
     "stream_url": "https://zweiapp.b-cdn.net/1080p/index.m3u8",
     "format": "hls",
     "video_codec": "h264",
-    "audio_codec": "aac",
-    "resolution": "HD",
-    "status": "active",
-    "updated_at": "2026-10-09T14:33:26.894Z"
-  }
-]
+    "audio

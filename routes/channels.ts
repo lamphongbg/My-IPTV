@@ -16,7 +16,7 @@ export async function getAllChannels(): Promise<Channel[]> {
 
 export async function getChannelById(id: string): Promise<Channel | null> {
   if (!id) return null;
-  const cleanId = id.replace(/\.(m3u|m3u8|pls|ts)$/i, '').trim();
+  const cleanId = id.replace(/\.(m3u|m3u8|pls|ts|ram|rpm|mp4|3gp|coreplayer|realplayer)$/i, '').trim();
 
   // 1. Direct DB lookup by ID
   const direct = await getChannelFromDb(cleanId);
@@ -128,20 +128,38 @@ router.get('/api/channels', async (req: Request, res: Response) => {
   }
 });
 
-// Helper to extract custom LAN host from query or e72_host cookie
+// Helper to extract custom LAN host from query or e72_host cookie or Render proxy
 function extractE72Host(req: Request): string {
   const queryHost = (req.query.host as string) || (req.query.ip as string) || (req.headers['x-custom-host'] as string);
-  if (queryHost && queryHost.trim()) return queryHost.trim();
+  if (queryHost && queryHost.trim()) return queryHost.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
   const cookieHeader = req.headers.cookie || '';
   const match = cookieHeader.match(/(?:^|;\s*)e72_host=([^;]+)/);
   if (match) {
     try {
-      return decodeURIComponent(match[1]).trim();
+      const decoded = decodeURIComponent(match[1]).trim();
+      if (decoded) return decoded.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
     } catch {
-      return match[1].trim();
+      if (match[1].trim()) return match[1].trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
     }
   }
   return '';
+}
+
+// Helper to determine the best external host on Render or Local
+function resolveEffectiveServerHost(req: Request): string {
+  const custom = extractE72Host(req);
+  if (custom) return custom;
+  const forwarded = req.headers['x-forwarded-host'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim();
+  }
+  if (req.get('host')) {
+    return req.get('host')!.trim();
+  }
+  if (process.env.RENDER_EXTERNAL_HOSTNAME) {
+    return process.env.RENDER_EXTERNAL_HOSTNAME.trim();
+  }
+  return '127.0.0.1:3000';
 }
 
 // Export dynamic M3U and PLS playlist files for VLC / CorePlayer / Nokia E72
@@ -156,10 +174,15 @@ router.get(
     '/api/channels/e72.pls',
     '/playlist_e72.m3u',
     '/playlist_e72.pls',
+    '/realplayer.ram',
+    '/playlist_realplayer.ram',
+    '/api/channels/realplayer.ram',
+    '/api/channels/realplayer.m3u',
   ],
   async (req: Request, res: Response) => {
     try {
       const channels = await getAllActiveChannels();
+      const isRealPlayerRam = req.path.includes('realplayer') && req.path.endsWith('.ram');
       const isCorePlayer =
         req.path.includes('coreplayer') ||
         req.path.includes('e72') ||
@@ -167,12 +190,33 @@ router.get(
         req.query.profile === 'e72';
       const isPls = req.path.endsWith('.pls');
 
+      const host = resolveEffectiveServerHost(req);
+
+      if (isRealPlayerRam) {
+        // RealPlayer Batch Playlist (.ram file) for Nokia E72 / Symbian S60
+        // RealPlayer on Symbian handles HTTP links directly
+        const proto = (req.query.proto as string) || 'http';
+        const resChoice = ((req.query.res as string) || '240p').toLowerCase();
+        let ramBody = '';
+        for (let i = 0; i < channels.length; i++) {
+          const ch = channels[i];
+          ramBody += `${proto}://${host}/c/${encodeURIComponent(ch.id)}.mp4?res=${resChoice}&player=realplayer\r\n`;
+        }
+        res.setHeader('Content-Type', 'audio/x-pn-realaudio; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader(
+          'Content-Disposition',
+          'attachment; filename="nokia_e72_realplayer.ram"'
+        );
+        return res.send(Buffer.from(ramBody, 'utf-8'));
+      }
+
       if (isCorePlayer) {
         // CorePlayer on Nokia E72 (Symbian S60) CANNOT negotiate modern TLS 1.2/1.3 handshakes!
         // Connecting to HTTPS causes Symbian error: "HTTPS hỗ trợ các thỏa thuận không được".
         // Therefore, CorePlayer playlists must strictly use plain 'http://' and support custom LAN IP.
-        const customHost = extractE72Host(req);
-        const host = customHost || req.get('host') || '127.0.0.1:3000';
         const proto = (req.query.proto as string) || 'http'; // Force plain HTTP for CorePlayer
         const resChoice = ((req.query.res as string) || '240p').toLowerCase();
         const resParam = `?res=${resChoice}`;
@@ -184,7 +228,7 @@ router.get(
             const ch = channels[i];
             const idx = i + 1;
             const safeName = sanitizeM3uFilename(ch.name, `ch_${ch.id}`);
-            const streamUrl = `${proto}://${host}/c/${idx}${resParam}`;
+            const streamUrl = `${proto}://${host}/c/${encodeURIComponent(ch.id)}.ts${resParam}`;
             plsBody += `File${idx}=${streamUrl}\r\nTitle${idx}=${idx}. ${safeName} [${resChoice.toUpperCase()}]\r\nLength${idx}=-1\r\n`;
           }
           plsBody += `Version=2\r\n`;
@@ -203,7 +247,7 @@ router.get(
           const ch = channels[i];
           const idx = i + 1;
           const safeName = sanitizeM3uFilename(ch.name, `ch_${ch.id}`);
-          const streamUrl = `${proto}://${host}/c/${idx}.ts${resParam}`;
+          const streamUrl = `${proto}://${host}/c/${encodeURIComponent(ch.id)}.ts${resParam}`;
           body += `#EXTINF:0,${idx}. ${safeName} [${resChoice.toUpperCase()}]\r\n${streamUrl}\r\n`;
         }
         res.setHeader('Content-Type', 'audio/x-mpegurl; charset=utf-8');
@@ -267,24 +311,37 @@ function sanitizeM3uFilename(name: string, fallback: string = 'channel'): string
   return ascii || fallback;
 }
 
-// Live MPEG-TS stream endpoint specifically designed for CorePlayer & Nokia E72 (Symbian S60)
-// - /e72.ts, /c/:id, /s/:id: Transcodes on-the-fly to QVGA 320x240, H.264 Baseline L1.3, AAC 48k (Smooth on ARM11 600MHz CPU)
-// - /live.ts: Remuxes on-the-fly with "-c copy" (Lightweight, preserves original resolution)
+// Live stream endpoints for CorePlayer (MPEG-TS) & RealPlayer (MP4/3GP/RTSP) on Nokia E72 (Symbian S60)
 router.get(
   [
     '/api/channel/:id/e72.ts',
     '/api/channel/:id/live.ts',
     '/api/channel/:id/stream.ts',
+    '/api/channel/:id/realplayer.mp4',
+    '/api/channel/:id/realplayer.3gp',
     '/c/:id',
     '/c/:id.ts',
+    '/c/:id.mp4',
+    '/c/:id.3gp',
     '/s/:id',
     '/s/:id.ts',
+    '/s/:id.mp4',
+    '/s/:id.3gp',
+    '/realplayer/:id',
+    '/realplayer/:id.mp4',
+    '/realplayer/:id.3gp',
     '/channel/:id.ts',
     '/live/:id.ts',
   ],
   async (req: Request, res: Response, next: any) => {
-    // If request has playlist extension, let the playlist handler handle it
-    if (req.path.endsWith('.m3u') || req.path.endsWith('.m3u8') || req.path.endsWith('.pls')) {
+    // If request has playlist or launcher extension, let the launcher handler handle it
+    if (
+      req.path.endsWith('.m3u') ||
+      req.path.endsWith('.m3u8') ||
+      req.path.endsWith('.pls') ||
+      req.path.endsWith('.ram') ||
+      req.path.endsWith('.rpm')
+    ) {
       return next();
     }
 
@@ -295,8 +352,14 @@ router.get(
       }
 
       const streamUrl = channel.stream_url;
+      const isRealPlayer =
+        req.path.endsWith('.mp4') ||
+        req.path.endsWith('.3gp') ||
+        req.path.includes('realplayer') ||
+        req.query.player === 'realplayer';
 
-      res.setHeader('Content-Type', 'video/mp2t');
+      const contentType = req.path.endsWith('.3gp') ? 'video/3gpp' : isRealPlayer ? 'video/mp4' : 'video/mp2t';
+      res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
@@ -304,16 +367,10 @@ router.get(
       res.setHeader('Access-Control-Allow-Origin', '*');
 
       const resQuery = ((req.query.res as string) || (req.query.resolution as string) || (req.query.profile as string) || '').toLowerCase();
-      const isE72Endpoint = req.path.includes('e72') || req.path.startsWith('/c/') || req.path.startsWith('/s/');
-      const isLiveEndpoint = req.path.includes('live');
+      const isE72Endpoint = req.path.includes('e72') || req.path.startsWith('/c/') || req.path.startsWith('/s/') || isRealPlayer;
+      const isLiveEndpoint = req.path.includes('live') && !isRealPlayer;
 
       // Determine transcoding profile:
-      // - 180p: Ultra-light, 240x180, 15fps, 180kbps (Instant loading on 2G/3G or slow cellular)
-      // - 240p: Standard QVGA, 320x240, 20fps, 350kbps (Native pixel match for Nokia E72 screen)
-      // - 360p: Smooth SD, 640x360, 24fps, 650kbps (Smooth for mobile web and low bandwidth)
-      // - 480p: DVD SD, 854x480, 25fps, 1100kbps (Standard web)
-      // - 720p: HD, 1280x720, 30fps, 1800kbps (High definition)
-      // - copy: Direct remuxing without re-encoding
       let profile: '180p' | '240p' | '360p' | '480p' | '720p' | 'copy';
 
       if (resQuery === '180p' || resQuery === '180' || resQuery === 'nqvga' || resQuery === 'ultralight') {
@@ -336,7 +393,47 @@ router.get(
 
       let ffmpegArgs: string[];
 
-      if (profile === 'copy') {
+      if (isRealPlayer) {
+        // Native Progressive MP4/3GP container for Symbian S60v3 RealPlayer hardware decoder
+        // Strict parameters: H.264 Baseline Profile L1.2, 320x240, 15fps, AAC-LC 48kbps, fragmented MP4
+        const config = {
+          '180p': { w: 240, h: 180, fps: '15', bV: '160k', maxV: '200k', buf: '320k', bA: '40k', ar: '22050' },
+          '240p': { w: 320, h: 240, fps: '18', bV: '250k', maxV: '320k', buf: '500k', bA: '48k', ar: '22050' },
+          '360p': { w: 480, h: 320, fps: '20', bV: '450k', maxV: '550k', buf: '800k', bA: '64k', ar: '32000' },
+          '480p': { w: 640, h: 360, fps: '24', bV: '650k', maxV: '800k', buf: '1200k', bA: '64k', ar: '44100' },
+          '720p': { w: 640, h: 360, fps: '24', bV: '650k', maxV: '800k', buf: '1200k', bA: '64k', ar: '44100' },
+          'copy': { w: 320, h: 240, fps: '18', bV: '250k', maxV: '320k', buf: '500k', bA: '48k', ar: '22050' },
+        }[profile];
+
+        ffmpegArgs = [
+          '-fflags', '+nobuffer+discardcorrupt',
+          '-analyzeduration', '1500000',
+          '-probesize', '1500000',
+          '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
+          '-i', streamUrl,
+          '-vf', `scale=${config.w}:${config.h}:force_original_aspect_ratio=decrease,pad=${config.w}:${config.h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`,
+          '-c:v', 'libx264',
+          '-profile:v', 'baseline',
+          '-level', '1.2',
+          '-preset', 'ultrafast',
+          '-tune', 'zerolatency',
+          '-b:v', config.bV,
+          '-maxrate', config.maxV,
+          '-bufsize', config.buf,
+          '-r', config.fps,
+          '-g', '30',
+          '-keyint_min', '15',
+          '-sc_threshold', '0',
+          '-c:a', 'aac',
+          '-profile:a', 'aac_low',
+          '-b:a', config.bA,
+          '-ar', config.ar,
+          '-ac', '2',
+          '-f', 'mp4',
+          '-movflags', '+frag_keyframe+empty_moov+default_base_moof',
+          'pipe:1'
+        ];
+      } else if (profile === 'copy') {
         ffmpegArgs = [
           '-fflags', '+nobuffer+discardcorrupt',
           '-analyzeduration', '1500000',
@@ -433,21 +530,32 @@ router.get(
   }
 );
 
-// Export single-channel M3U / M3U8 / PLS playlist file for VLC Media Player and Nokia CorePlayer
+// Export single-channel M3U / M3U8 / PLS / RAM launcher files for VLC, Nokia CorePlayer & RealPlayer
 router.get(
   [
+    '/play/coreplayer/:id',
+    '/play/realplayer/:id',
+    '/launch/coreplayer/:id',
+    '/launch/realplayer/:id',
     '/api/channel/:id/vlc.m3u',
     '/api/channel/:id/vlc.m3u8',
     '/api/channel/:id/stream.m3u',
     '/api/channel/:id/stream.m3u8',
     '/api/channel/:id/coreplayer.m3u',
     '/api/channel/:id/coreplayer.pls',
+    '/api/channel/:id/realplayer.ram',
+    '/api/channel/:id/realplayer.rpm',
+    '/api/channel/:id/realplayer.m3u',
     '/api/channel/:id/e72.m3u',
     '/api/channel/:id/e72.pls',
     '/c/:id.m3u',
     '/c/:id.pls',
+    '/c/:id.ram',
+    '/c/:id.rpm',
     '/s/:id.m3u',
     '/s/:id.pls',
+    '/s/:id.ram',
+    '/realplayer/:id.ram',
   ],
   async (req: Request, res: Response) => {
     try {
@@ -457,18 +565,43 @@ router.get(
       }
       const isM3u8 = req.path.endsWith('.m3u8');
       const isPls = req.path.endsWith('.pls');
-      const isCorePlayer = req.path.includes('coreplayer') || req.path.includes('e72') || req.path.startsWith('/c/') || req.path.startsWith('/s/') || isPls;
+      const isRam =
+        req.path.endsWith('.ram') ||
+        req.path.endsWith('.rpm') ||
+        req.path.includes('realplayer');
+      const isCorePlayer =
+        !isRam &&
+        (req.path.includes('coreplayer') ||
+          req.path.includes('e72') ||
+          req.path.startsWith('/c/') ||
+          req.path.startsWith('/s/') ||
+          isPls);
       const safeAsciiName = sanitizeM3uFilename(channel.name, `channel_${channel.id}`);
       const cleanDisplayName = channel.name.replace(/["\r\n]/g, '').trim();
 
-      const customHost = (req.query.host as string) || (req.query.ip as string) || (req.headers['x-custom-host'] as string);
-      const host = customHost || req.get('host') || '127.0.0.1:3000';
-      // CorePlayer on Symbian S60 requires plain HTTP ('http://'). HTTPS causes "HTTPS hỗ trợ các thỏa thuận không được".
-      const proto = isCorePlayer
-        ? ((req.query.proto as string) || 'http')
-        : ((req.headers['x-forwarded-proto'] as string) || req.protocol || 'http');
+      const host = resolveEffectiveServerHost(req);
+      const proto = (req.query.proto as string) || (req.headers['x-forwarded-proto'] ? (req.headers['x-forwarded-proto'] as string).split(',')[0].trim() : (req.secure ? 'https' : 'http'));
       const resQuery = ((req.query.res as string) || (req.query.resolution as string) || '').toLowerCase();
       const resParam = resQuery ? `?res=${encodeURIComponent(resQuery)}` : '';
+
+      // Direct launch on Symbian S60 requires 'inline' Content-Disposition so browser invokes viewer app
+      // If user explicitly asks for download (dl=1), serve as 'attachment' to save to memory card
+      const isDownload = req.query.dl === '1' || req.query.download === '1';
+      const dispositionType = isDownload ? 'attachment' : 'inline';
+
+      if (isRam) {
+        // RealPlayer launcher file (.ram) - Symbian S60 directly invokes RealPlayer.exe (UID 0x10005a3e)
+        const realPlayerUrl = `${proto}://${host}/c/${encodeURIComponent(channel.id)}.mp4?res=${resQuery || '240p'}&player=realplayer\r\n`;
+        res.setHeader('Content-Type', 'audio/x-pn-realaudio; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader(
+          'Content-Disposition',
+          `${dispositionType}; filename="${safeAsciiName}_realplayer.ram"`
+        );
+        return res.send(Buffer.from(realPlayerUrl, 'utf-8'));
+      }
 
       const e72TsUrl = `${proto}://${host}/c/${encodeURIComponent(channel.id)}.ts${resParam}`;
       const liveTsUrl = `${proto}://${host}/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
@@ -479,7 +612,7 @@ router.get(
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
-        res.setHeader('Content-Disposition', `attachment; filename="${safeAsciiName}_e72.pls"`);
+        res.setHeader('Content-Disposition', `${dispositionType}; filename="${safeAsciiName}_e72.pls"`);
         return res.send(Buffer.from(plsBody, 'utf-8'));
       }
 
@@ -529,7 +662,7 @@ router.get(
       res.setHeader('Expires', '0');
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename="${safeAsciiName}.${fileExt}"`
+        `${dispositionType}; filename="${safeAsciiName}.${fileExt}"`
       );
       res.send(Buffer.from(m3uBody, 'utf-8'));
     } catch (err: any) {

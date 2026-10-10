@@ -143,13 +143,13 @@ git push -u origin main
    * **Database:** `my-iptv-db` (PostgreSQL miễn phí).
    * **Web Service:** `my-iptv` (Node.js).
 5. Render tự động nối `DATABASE_URL` giữa Database và Web Service, đồng thời tạo mật khẩu ngẫu nhiên an toàn cho `ADMIN_PASSWORD`.
-6. Nhấn **Apply**. Sau khoảng 2 phút, hệ thống sẽ sẵn sàng hoạt động tại `https://my-iptv-uguq.onrender.com`.
+6. Nhấn **Apply**. Sau khoảng 2 phút, hệ thống sẽ sẵn sàng hoạt động tại URL Render của bạn (ví dụ: `https://<ten-ung-dung>.onrender.com`).
 
 ### Cách 2: Tạo Web Service Độc Lập (Không cần Database)
 1. Nhấn **New + &gt; Web Service** trên Render.
 2. Kết nối tới repository `my-iptv`.
 3. Điền các cấu hình:
-   * **Name:** `my-iptv-uguq`
+   * **Name:** `my-iptv` (hoặc tên tùy chọn của bạn)
    * **Region:** `Singapore`
    * **Build Command:** `npm install && npm run build`
    * **Start Command:** `npm start`
@@ -161,38 +161,36 @@ git push -u origin main
 
 ---
 
-## 7. HƯỚNG DẪN VẬN HÀNH TRÊN NOKIA E72, OPERA MINI & COREPLAYER 3.36
+## 7. HƯỚNG DẪN VẬN HÀNH TRÊN NOKIA E72, OPERA MINI & COREPLAYER / REALPLAYER
 
-Ứng dụng của bạn đã được triển khai tại: **`https://my-iptv-uguq.onrender.com`**
+Sau khi triển khai lên Render, server tự động nhận diện domain của bạn thông qua `X-Forwarded-Host`, `X-Forwarded-Proto` hoặc biến môi trường `RENDER_EXTERNAL_URL`.
 
-### Bước 1: Truy cập trên Opera Mini
-1. Mở Opera Mini trên Nokia E72, nhập địa chỉ:
-   `https://my-iptv-uguq.onrender.com/legacy`
-2. Để kích hoạt CorePlayer:
-   * Nhấn nút màu xanh: **`[ ▶ MỞ BẰNG COREPLAYER (TẢI M3U) ]`**.
-   * Opera Mini hiển thị bảng thông báo tải tệp: Chọn **"Mở" (Open)**.
-   * CorePlayer 3.36 / 1.36 sẽ tự động khởi động và phát truyền hình ngay lập tức!
+### Bước 1: Mở trực tiếp trên Nokia E72 & Opera Mini
+1. Mở Opera Mini trên Nokia E72, truy cập:
+   `https://<ten-app-render>.onrender.com/legacy` (hoặc `/e72`)
+2. Để khởi chạy ứng dụng xem:
+   * Nhấn nút màu xanh: **`[ ▶ COREPLAYER ]`** &rarr; Trình duyệt tự gọi CorePlayer phát luồng QVGA.
+   * Hoặc nhấn nút màu đỏ: **`[ ▶ REALPLAYER ]`** &rarr; Symbian kích hoạt RealPlayer tích hợp trong ROM máy.
+   * Trên Opera Mini, chọn **"Mở" (Open)** khi có hộp thoại xác nhận.
 
-### Bước 2: Khắc phục triệt để lỗi SSL ("HTTPS hỗ trợ các thỏa thuận không được")
-Do Render bắt buộc mã hóa HTTPS, CorePlayer trên Symbian S60 không thể bắt tay TLS 1.2+ trực tiếp. Hãy sử dụng cầu nối **`e72-relay.py`**:
-1. Trên máy tính kết nối cùng Wi-Fi với Nokia E72, tải và chạy:
+### Bước 2: Cầu Nối HTTP Cho CorePlayer (Khắc phục lỗi TLS 1.3 của Symbian)
+Do Render bắt buộc mã hóa HTTPS, CorePlayer 1.36 trên Symbian S60 không thể giải mã chứng chỉ TLS 1.2/1.3. Cầu nối siêu nhẹ `e72-relay` giúp xem trực tiếp trong mạng Wi-Fi:
+1. Tải script relay trực tiếp từ chính server đã deploy:
+   * `https://<ten-app-render>.onrender.com/e72-relay.py` (Script tự động gắn đúng URL Render của bạn!)
+2. Chạy trên máy tính (cùng Wi-Fi với Nokia E72):
    ```bash
    python e72-relay.py
    ```
-   *(File script đã được cấu hình sẵn đích đến `https://my-iptv-uguq.onrender.com`, tự động tìm IP LAN như `192.168.1.15:8080`)*
-2. Trong CorePlayer, chọn **Menu > Open URL...** và nhập trực tiếp đường link siêu ngắn:
-   * **Kênh 1:** `http://192.168.1.15:8080/c/1`
-   * **Kênh 2:** `http://192.168.1.15:8080/c/2`
-   * **Kênh 3:** `http://192.168.1.15:8080/c/3`
-3. Hoặc tải toàn bộ danh sách kênh về thẻ nhớ:
-   `http://192.168.1.15:8080/api/channels/e72.m3u` (hoặc `.pls`)
+3. Trong CorePlayer, chọn **Menu > Open URL...** và nhập link nội bộ:
+   * **Kênh 1:** `http://[IP-May-Tinh]:8080/c/1`
+   * Hoặc tải toàn bộ danh bạ: `http://[IP-May-Tinh]:8080/api/channels/coreplayer.m3u`
 
 ---
 
 ## 8. DANH SÁCH NHỮNG VIỆC CẦN CẤU HÌNH THỦ CÔNG
 
-Sau khi triển khai trên Render, bạn cần thực hiện:
+Sau khi triển khai trên Render:
 
-1. **Kiểm tra Health Check:** Truy cập `https://my-iptv-uguq.onrender.com/health` để xác nhận trạng thái `{"status": "ok"}`.
-2. **Đăng nhập Admin Portal:** Truy cập `https://my-iptv-uguq.onrender.com/admin` để quản lý và nạp danh sách kênh IPTV.
+1. **Kiểm tra Health Check:** Truy cập `/health` (hoặc `/healthz`) để xác nhận trạng thái `{"status": "ok"}`.
+2. **Đăng nhập Admin Portal:** Truy cập `/admin` để quản lý và nạp danh sách kênh IPTV.
 3. **Cập nhật Playlist:** Bấm **"Refresh All Playlists"** để hệ thống đồng bộ hóa luồng phát mới nhất.

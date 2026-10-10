@@ -25,7 +25,11 @@ import {
   Play,
   Database,
   Check,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 
 const ADMIN_TOKEN_KEY = 'my_iptv_admin_token';
@@ -89,8 +93,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     onlineCount: number;
     offlineCount: number;
     currentChannelName?: string;
+    scopeDescription?: string;
   } | null>(null);
   const [isStartingScan, setIsStartingScan] = useState<boolean>(false);
+  const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
+  const [scanScope, setScanScope] = useState<'page' | 'filtered' | 'all'>('page');
+  const [scanConcurrency, setScanConcurrency] = useState<number>(15);
 
   // Stream probe state
   const [testUrlInput, setTestUrlInput] = useState<string>('');
@@ -393,24 +401,39 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     }
   };
 
-  const handleStartBatchScan = async () => {
-    if (
-      !confirm(
-        `Bắt đầu quét rà soát toàn bộ ${channels.length} kênh trong hệ thống?\n\n- Kênh phát tốt: Giữ nguyên Active (Khả dụng)\n- Kênh lỗi/chết link: Tự động đánh dấu Offline (Không khả dụng)`
-      )
-    )
-      return;
+  const executeScan = async () => {
+    setIsScanModalOpen(false);
     setIsStartingScan(true);
+
+    let channelIds: string[] | undefined = undefined;
+    let group: string | undefined = undefined;
+    let scopeDesc = '';
+
+    if (scanScope === 'page') {
+      channelIds = paginatedChannels.map((c) => c.id);
+      scopeDesc = `Trang ${safeCurrentPage} (${paginatedChannels.length} kênh)`;
+    } else if (scanScope === 'filtered') {
+      channelIds = filteredChannels.map((c) => c.id);
+      scopeDesc = `Bộ lọc hiện tại (${filteredChannels.length} kênh)`;
+    } else {
+      scopeDesc = `Toàn bộ hệ thống (${channels.length} kênh)`;
+    }
+
     try {
       const res = await fetch('/api/admin/channels/scan-all', {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ concurrency: 6 }),
+        body: JSON.stringify({
+          concurrency: scanConcurrency,
+          channelIds,
+          group,
+          scopeDescription: scopeDesc,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Không thể bắt đầu quét');
       setScanProgress(data.progress);
-      showNotification('Đã bắt đầu tiến trình rà soát tính khả dụng!');
+      showNotification(`Đã kích hoạt quét: ${scopeDesc}!`);
     } catch (err: any) {
       showNotification(err.message, 'error');
     } finally {
@@ -506,6 +529,37 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     }
     return true;
   });
+
+  // Channel Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [jumpPageInput, setJumpPageInput] = useState<string>('');
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [channelSearch, filterPlaylist, filterGroup, filterStatus, pageSize]);
+
+  const totalPages = Math.ceil(filteredChannels.length / pageSize) || 1;
+  const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, filteredChannels.length);
+  const paginatedChannels = filteredChannels.slice(startIndex, endIndex);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  const handleJumpToPage = (e: React.FormEvent) => {
+    e.preventDefault();
+    const p = parseInt(jumpPageInput.trim(), 10);
+    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+      setCurrentPage(p);
+      setJumpPageInput('');
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // RENDER LOGIN SCREEN IF NOT AUTHENTICATED
@@ -864,13 +918,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={handleStartBatchScan}
-                  disabled={scanProgress?.isRunning || isStartingScan}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow"
+                  onClick={() => {
+                    if (scanProgress?.isRunning) {
+                      handleStopBatchScan();
+                    } else {
+                      setIsScanModalOpen(true);
+                    }
+                  }}
+                  disabled={isStartingScan}
+                  className={`px-3.5 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow ${
+                    scanProgress?.isRunning
+                      ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
                   title="Tự động kiểm tra từng luồng và đánh dấu offline các kênh hỏng"
                 >
                   <Activity className={`w-4 h-4 ${scanProgress?.isRunning ? 'animate-spin' : ''}`} />
-                  <span>{scanProgress?.isRunning ? 'Đang Quét Rà Soát...' : '⚡ Quét Rà Soát Toàn Bộ Kênh'}</span>
+                  <span>
+                    {scanProgress?.isRunning
+                      ? `Đang Quét (${scanProgress.scanned}/${scanProgress.total}) - Bấm Dừng`
+                      : '⚡ Quét Rà Soát Kênh'}
+                  </span>
                 </button>
 
                 <button
@@ -995,6 +1063,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   </option>
                 ))}
               </select>
+
+              <div className="flex items-center gap-1.5 px-3 py-2 bg-neutral-900 border border-neutral-800 text-neutral-300 rounded-xl text-xs font-mono ml-auto">
+                <span className="text-neutral-500">Trang:</span>
+                <span className="font-bold text-amber-400">{safeCurrentPage}</span>
+                <span className="text-neutral-600">/</span>
+                <span>{totalPages}</span>
+              </div>
             </div>
 
             {/* Channels Table */}
@@ -1012,14 +1087,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-800/60">
-                    {filteredChannels.length === 0 ? (
+                    {paginatedChannels.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="py-8 text-center text-neutral-500">
-                          Không tìm thấy kênh nào phù hợp với bộ lọc.
+                          {filteredChannels.length === 0
+                            ? 'Không tìm thấy kênh nào phù hợp với bộ lọc.'
+                            : 'Không có kênh nào trên trang này.'}
                         </td>
                       </tr>
                     ) : (
-                      filteredChannels.map((ch) => (
+                      paginatedChannels.map((ch) => (
                         <tr key={ch.id} className="hover:bg-neutral-850/50 transition">
                           <td className="py-3 px-4 font-semibold text-white">
                             <div className="flex items-center gap-2.5">
@@ -1140,6 +1217,156 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Pagination Controls Bar */}
+              <div className="bg-neutral-950 border-t border-neutral-800 px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
+                {/* Left: Summary */}
+                <div className="text-neutral-400 flex items-center gap-2">
+                  <span>
+                    Hiển thị <strong className="text-white font-semibold">{filteredChannels.length === 0 ? 0 : (startIndex + 1).toLocaleString('vi-VN')} - {endIndex.toLocaleString('vi-VN')}</strong> trong tổng số{' '}
+                    <strong className="text-amber-400 font-semibold">{filteredChannels.length.toLocaleString('vi-VN')}</strong> kênh
+                  </span>
+                </div>
+
+                {/* Center: Pagination Buttons */}
+                <div className="flex items-center gap-1.5">
+                  {/* First page */}
+                  <button
+                    onClick={() => handlePageChange(1)}
+                    disabled={safeCurrentPage <= 1}
+                    className="p-1.5 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-300 transition"
+                    title="Về trang đầu tiên"
+                  >
+                    <ChevronsLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Prev page */}
+                  <button
+                    onClick={() => handlePageChange(safeCurrentPage - 1)}
+                    disabled={safeCurrentPage <= 1}
+                    className="p-1.5 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-300 transition"
+                    title="Trang trước"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Numeric Page Pills */}
+                  <div className="flex items-center gap-1 px-1">
+                    {(() => {
+                      const pages: number[] = [];
+                      const windowSize = 2; // Show 2 pages before and after current
+                      let start = Math.max(1, safeCurrentPage - windowSize);
+                      let end = Math.min(totalPages, safeCurrentPage + windowSize);
+
+                      // Ensure 5 pages if available
+                      if (end - start < 4) {
+                        if (start === 1) end = Math.min(totalPages, start + 4);
+                        else if (end === totalPages) start = Math.max(1, end - 4);
+                      }
+
+                      for (let i = start; i <= end; i++) pages.push(i);
+
+                      return (
+                        <>
+                          {start > 1 && (
+                            <>
+                              <button
+                                onClick={() => handlePageChange(1)}
+                                className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 transition"
+                              >
+                                1
+                              </button>
+                              {start > 2 && <span className="text-neutral-600 px-0.5">…</span>}
+                            </>
+                          )}
+
+                          {pages.map((p) => (
+                            <button
+                              key={p}
+                              onClick={() => handlePageChange(p)}
+                              className={`px-2.5 py-1 rounded-lg font-semibold transition ${
+                                p === safeCurrentPage
+                                  ? 'bg-amber-500 text-neutral-950 font-bold shadow'
+                                  : 'bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300'
+                              }`}
+                            >
+                              {p}
+                            </button>
+                          ))}
+
+                          {end < totalPages && (
+                            <>
+                              {end < totalPages - 1 && <span className="text-neutral-600 px-0.5">…</span>}
+                              <button
+                                onClick={() => handlePageChange(totalPages)}
+                                className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 transition"
+                              >
+                                {totalPages}
+                              </button>
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Next page */}
+                  <button
+                    onClick={() => handlePageChange(safeCurrentPage + 1)}
+                    disabled={safeCurrentPage >= totalPages}
+                    className="p-1.5 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-300 transition"
+                    title="Trang tiếp theo"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Last page */}
+                  <button
+                    onClick={() => handlePageChange(totalPages)}
+                    disabled={safeCurrentPage >= totalPages}
+                    className="p-1.5 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-300 transition"
+                    title="Đến trang cuối cùng"
+                  >
+                    <ChevronsRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Right: Page Size & Jump to page */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-neutral-500 text-[11px]">Số kênh:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                      className="bg-neutral-900 border border-neutral-800 text-neutral-300 rounded-lg px-2 py-1 text-xs focus:outline-none"
+                    >
+                      <option value={25}>25 / trang</option>
+                      <option value={50}>50 / trang</option>
+                      <option value={100}>100 / trang</option>
+                      <option value={200}>200 / trang</option>
+                    </select>
+                  </div>
+
+                  <form onSubmit={handleJumpToPage} className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalPages}
+                      value={jumpPageInput}
+                      onChange={(e) => setJumpPageInput(e.target.value)}
+                      placeholder={String(safeCurrentPage)}
+                      className="w-12 bg-neutral-900 border border-neutral-800 rounded-lg px-1.5 py-1 text-xs text-center text-white focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!jumpPageInput.trim()}
+                      className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 text-neutral-200 rounded-lg text-[11px] font-medium transition"
+                    >
+                      Đi
+                    </button>
+                  </form>
+                </div>
               </div>
             </div>
           </div>
@@ -1485,6 +1712,158 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* --------------------------------------------------------------------- */}
+      {/* MODAL: BATCH SCANNER OPTIONS (NO BROWSER CONFIRM POPUP) */}
+      {/* --------------------------------------------------------------------- */}
+      {isScanModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in-50 duration-200">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
+                  <Activity className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white">Quét Rà Soát Tính Khả Dụng</h3>
+                  <p className="text-[11px] text-neutral-400">Kiểm tra luồng trực tiếp và đánh dấu kênh hỏng</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsScanModalOpen(false)}
+                className="text-neutral-500 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Scope Selection */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-neutral-300 block">Chọn phạm vi quét:</label>
+
+              <div
+                onClick={() => setScanScope('page')}
+                className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition ${
+                  scanScope === 'page'
+                    ? 'bg-emerald-500/10 border-emerald-500/50 text-white'
+                    : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="scanScope"
+                  checked={scanScope === 'page'}
+                  onChange={() => setScanScope('page')}
+                  className="mt-0.5 text-emerald-500 focus:ring-0"
+                />
+                <div>
+                  <div className="font-semibold text-xs text-emerald-400 flex items-center gap-1.5">
+                    <span>⚡ Quét trang hiện tại (Trang {safeCurrentPage})</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">Nhanh nhất</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    Quét <strong>{paginatedChannels.length} kênh</strong> trên trang đang xem. Hoàn tất trong ~3-5 giây!
+                  </p>
+                </div>
+              </div>
+
+              <div
+                onClick={() => setScanScope('filtered')}
+                className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition ${
+                  scanScope === 'filtered'
+                    ? 'bg-emerald-500/10 border-emerald-500/50 text-white'
+                    : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="scanScope"
+                  checked={scanScope === 'filtered'}
+                  onChange={() => setScanScope('filtered')}
+                  className="mt-0.5 text-emerald-500 focus:ring-0"
+                />
+                <div>
+                  <div className="font-semibold text-xs text-white">
+                    📂 Quét danh sách đang lọc ({filteredChannels.length.toLocaleString('vi-VN')} kênh)
+                  </div>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    Quét tất cả các kênh thuộc nhóm hoặc từ khóa tìm kiếm đang chọn.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                onClick={() => setScanScope('all')}
+                className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition ${
+                  scanScope === 'all'
+                    ? 'bg-emerald-500/10 border-emerald-500/50 text-white'
+                    : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="scanScope"
+                  checked={scanScope === 'all'}
+                  onChange={() => setScanScope('all')}
+                  className="mt-0.5 text-emerald-500 focus:ring-0"
+                />
+                <div>
+                  <div className="font-semibold text-xs text-white">
+                    🌐 Quét toàn bộ hệ thống ({channels.length.toLocaleString('vi-VN')} kênh)
+                  </div>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    Tiến trình quét nền đa luồng. Có thể bấm dừng bất cứ lúc nào.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Concurrency Selector */}
+            <div className="flex items-center justify-between p-3 bg-neutral-950 border border-neutral-800 rounded-xl text-xs">
+              <div>
+                <span className="font-medium text-neutral-300">Tốc độ quét:</span>
+                <p className="text-[10px] text-neutral-500">Số luồng thăm dò đồng thời</p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {[10, 15, 25].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setScanConcurrency(c)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                      scanConcurrency === c
+                        ? 'bg-amber-500 text-neutral-950 font-bold'
+                        : 'bg-neutral-900 border border-neutral-800 text-neutral-400'
+                    }`}
+                  >
+                    {c} luồng
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setIsScanModalOpen(false)}
+                className="px-3.5 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-xl text-xs transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={executeScan}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow"
+              >
+                <Activity className="w-3.5 h-3.5" />
+                <span>Bắt Đầu Quét Ngay</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

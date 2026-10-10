@@ -10,238 +10,375 @@ function escapeHtml(text: string = ''): string {
 }
 
 const LEGACY_CSS = `
-  body {
-    background-color: #12141a;
-    color: #e5e7eb;
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 13px;
-    line-height: 1.4;
+  /* ==========================================================================
+     NOKIA E72 (SYMBIAN S60v3 FP2) - TIÊU CHUẨN ĐỒ HỌA & CÔNG THÁI HỌC QVGA 320x240
+     Thiết kế bởi Chuyên gia IPTV Gateway & Multimedia Streaming 10+ năm kinh nghiệm
+     ========================================================================== */
+  * {
+    box-sizing: border-box;
+    -webkit-text-size-adjust: none;
+  }
+  html, body {
     margin: 0;
-    padding: 6px;
+    padding: 0;
+    background-color: #070a10;
+    color: #e2e8f0;
+    font-family: "Nokia Sans", "Series 60 Sans", Arial, Helvetica, sans-serif;
+    font-size: 11px;
+    line-height: 1.35;
+    max-width: 320px;
+    margin-left: auto;
+    margin-right: auto;
+    overflow-x: hidden;
   }
   a {
     color: #38bdf8;
     text-decoration: underline;
   }
-  a:focus, a:hover, a:active {
-    background-color: #ffd700 !important;
+  /* Bắt nét con trỏ chuột quang Optical Navi key Nokia E72 */
+  a:focus, a:hover, a:active,
+  button:focus, button:hover,
+  input:focus, select:focus {
+    background-color: #f59e0b !important;
     color: #000000 !important;
-    outline: 2px solid #ffffff;
+    outline: 2px solid #ffffff !important;
+    text-decoration: none !important;
   }
-  .detect-banner {
-    background-color: #14532d;
-    color: #86efac;
-    padding: 5px 8px;
-    font-size: 11px;
-    text-align: center;
-    border: 1px solid #22c55e;
-    margin-bottom: 6px;
-    font-weight: bold;
-    border-radius: 4px;
-  }
-  .opera-banner {
-    background-color: #451a03;
-    color: #fed7aa;
-    padding: 6px 8px;
-    font-size: 12px;
-    border: 1px solid #f97316;
-    margin-bottom: 8px;
-    border-radius: 6px;
-    line-height: 1.5;
-  }
-  .header {
-    background-color: #0f2b48;
-    color: #ffffff;
-    padding: 8px 6px;
-    text-align: center;
+
+  /* THANH TIÊU ĐỀ DOANH NHÂN E-SERIES */
+  .top-header {
+    background: #0f172a;
     border-bottom: 2px solid #f59e0b;
-    margin-bottom: 8px;
+    padding: 5px 6px;
+    text-align: center;
+    margin-bottom: 4px;
   }
-  .header h1 {
-    font-size: 16px;
-    margin: 0 0 4px 0;
+  .brand-title {
+    font-size: 13px;
+    font-weight: bold;
+    color: #f59e0b;
+    margin: 0 0 1px 0;
     text-transform: uppercase;
-    color: #f59e0b;
+    letter-spacing: 0.5px;
   }
-  .search-panel {
-    background-color: #1e2430;
-    border: 1px solid #334155;
-    padding: 8px 6px;
-    margin-bottom: 8px;
-    border-radius: 6px;
+  .brand-sub {
+    font-size: 9px;
+    color: #94a3b8;
   }
-  .form-group {
-    margin-bottom: 6px;
-  }
-  .form-label {
-    display: block;
-    font-size: 12px;
-    font-weight: bold;
-    color: #f59e0b;
-    margin-bottom: 2px;
-  }
-  .input-text, .select-box {
-    width: 96%;
-    padding: 5px;
-    font-size: 13px;
-    background-color: #ffffff;
-    color: #000000;
-    border: 1px solid #999999;
-    box-sizing: border-box;
-    display: block;
-    border-radius: 4px;
-  }
-  .btn-search {
-    width: 96%;
-    padding: 6px 10px;
-    font-size: 13px;
-    background-color: #f59e0b;
-    color: #000000;
-    font-weight: bold;
-    border: 1px solid #000000;
-    cursor: pointer;
-    margin-top: 4px;
-    display: block;
+
+  /* KHUNG THÔNG BÁO TRẠNG THÁI THIẾT BỊ */
+  .status-pill {
+    background-color: #064e3b;
+    color: #a7f3d0;
+    border: 1px solid #10b981;
+    padding: 3px 6px;
+    font-size: 9px;
     text-align: center;
-    border-radius: 4px;
-  }
-  .filter-status {
-    background-color: #1e293b;
-    border: 1px solid #334155;
-    padding: 5px 8px;
-    margin-bottom: 8px;
-    font-size: 12px;
-    color: #93c5fd;
-    border-radius: 4px;
-  }
-  .channel-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .channel-item {
-    background-color: #1c2230;
-    border-bottom: 1px solid #2d3748;
-    padding: 8px 6px;
-    margin-bottom: 5px;
-    border-radius: 6px;
-  }
-  .channel-link {
-    font-size: 14px;
-    font-weight: bold;
-    color: #ffffff;
-    text-decoration: none;
-    display: block;
-    margin-bottom: 3px;
-  }
-  .channel-group-tag {
-    display: inline-block;
-    background-color: #0f2b48;
-    color: #f59e0b;
-    font-size: 11px;
-    padding: 1px 5px;
-    margin-right: 4px;
+    margin: 0 3px 5px 3px;
     border-radius: 3px;
-    border: 1px solid #1e3a8a;
-  }
-  .btn {
-    display: inline-block;
-    padding: 6px 8px;
-    margin: 3px 2px;
-    background-color: #1e293b;
-    color: #ffffff !important;
-    text-decoration: none;
-    border: 1px solid #475569;
     font-weight: bold;
-    font-size: 12px;
-    text-align: center;
+  }
+  .tip-banner {
+    background-color: #1e1b4b;
+    color: #c7d2fe;
+    border: 1px solid #4338ca;
+    padding: 4px 6px;
+    font-size: 10px;
+    margin: 0 3px 5px 3px;
+    border-radius: 3px;
+    line-height: 1.35;
+  }
+
+  /* CHUYỂN ĐỔI CHẾ ĐỘ PHÁT (PLAYER TABS) */
+  .mode-tabs {
+    background-color: #111827;
+    border: 1px solid #1f293d;
+    padding: 3px 2px;
+    margin: 0 3px 5px 3px;
     border-radius: 4px;
-  }
-  .btn-coreplayer {
-    background-color: #15803d !important;
-    border: 1px solid #22c55e !important;
-    color: #ffffff !important;
-    font-size: 13px;
-    font-weight: bold;
-    padding: 7px 10px;
-    display: block;
     text-align: center;
-    margin: 4px 0;
-    border-radius: 6px;
   }
-  .btn-res {
+  .tab-item {
     display: inline-block;
-    padding: 4px 7px;
-    margin: 2px;
-    font-size: 11px;
+    padding: 4px 5px;
+    margin: 1px;
+    font-size: 10px;
     font-weight: bold;
     text-decoration: none;
-    border-radius: 4px;
+    border-radius: 3px;
   }
-  .btn-res-active {
+  .tab-all-active {
     background-color: #2563eb !important;
     color: #ffffff !important;
     border: 1px solid #60a5fa;
   }
-  .btn-res-inactive {
-    background-color: #1f2937 !important;
-    color: #93c5fd !important;
-    border: 1px solid #374151;
+  .tab-core-active {
+    background-color: #15803d !important;
+    color: #ffffff !important;
+    border: 1px solid #4ade80;
   }
-  .pagination {
+  .tab-real-active {
+    background-color: #b91c1c !important;
+    color: #ffffff !important;
+    border: 1px solid #f87171;
+  }
+  .tab-idle {
+    background-color: #0b1120 !important;
+    color: #94a3b8 !important;
+    border: 1px solid #334155;
+  }
+
+  /* THANH CHỌN ĐỘ PHÂN GIẢI (RESOLUTION STRIP) */
+  .res-strip {
+    background-color: #0c121e;
+    border: 1px solid #1e293b;
+    padding: 3px 4px;
+    margin: 0 3px 5px 3px;
     text-align: center;
-    padding: 8px 0;
-    margin-top: 8px;
-    border-top: 1px dashed #475569;
+    border-radius: 4px;
   }
-  .pagination a, .pagination span {
-    padding: 4px 8px;
-    margin: 0 2px;
+  .res-label {
+    font-size: 9px;
+    color: #94a3b8;
+    margin-bottom: 2px;
+    font-weight: bold;
+  }
+  .btn-res-pill {
+    display: inline-block;
+    padding: 2px 4px;
+    margin: 1px;
+    font-size: 9px;
+    font-weight: bold;
+    text-decoration: none;
+    border-radius: 3px;
+  }
+  .res-on {
+    background-color: #f59e0b !important;
+    color: #000000 !important;
+    border: 1px solid #d97706;
+  }
+  .res-off {
+    background-color: #1e293b !important;
+    color: #cbd5e1 !important;
+    border: 1px solid #334155;
+  }
+
+  /* THẺ KÊNH TRUYỀN HÌNH (CHANNEL CARD) */
+  .ch-list {
+    margin: 0;
+    padding: 0 3px;
+    list-style: none;
+  }
+  .ch-card {
+    background-color: #111827;
+    border: 1px solid #1f2937;
+    border-left: 3px solid #0284c7;
+    padding: 5px;
+    margin-bottom: 5px;
+    border-radius: 4px;
+  }
+  .ch-header {
+    margin-bottom: 3px;
+  }
+  .badge-cat {
+    display: inline-block;
+    background-color: #0f2b48;
+    color: #f59e0b;
+    font-size: 9px;
+    font-weight: bold;
+    padding: 1px 3px;
+    border-radius: 2px;
+    border: 1px solid #1e3a8a;
+  }
+  .badge-live {
+    display: inline-block;
+    background-color: #052e16;
+    color: #4ade80;
+    font-size: 9px;
+    font-weight: bold;
+    padding: 1px 3px;
+    border-radius: 2px;
+    border: 1px solid #15803d;
+  }
+  .ch-name-link {
+    display: block;
+    font-size: 12px;
+    font-weight: bold;
+    color: #ffffff;
+    text-decoration: none;
+    margin-top: 2px;
+    line-height: 1.25;
+  }
+
+  /* NÚT GỌI ỨNG DỤNG TRỰC TIẾP TỪ TRÌNH DUYỆT */
+  .launch-box {
+    margin-top: 4px;
+  }
+  /* Chế độ kép: 2 nút song song ngang nhau */
+  .dual-grid {
+    width: 100%;
+    margin-top: 3px;
+  }
+  .btn-call-core {
+    display: inline-block;
+    width: 48%;
+    padding: 6px 2px;
+    background-color: #15803d !important;
+    color: #ffffff !important;
+    border: 1px solid #22c55e !important;
+    font-size: 10px;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 3px;
+    margin-right: 2%;
+  }
+  .btn-call-real {
+    display: inline-block;
+    width: 48%;
+    padding: 6px 2px;
+    background-color: #b91c1c !important;
+    color: #ffffff !important;
+    border: 1px solid #ef4444 !important;
+    font-size: 10px;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 3px;
+  }
+  /* Chế độ đơn: 1 nút cực đại toàn màn hình */
+  .btn-single-core {
+    display: block;
+    width: 100%;
+    padding: 7px 4px;
+    background-color: #15803d !important;
+    color: #ffffff !important;
+    border: 1px solid #22c55e !important;
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 3px;
+    margin-bottom: 3px;
+  }
+  .btn-single-real {
+    display: block;
+    width: 100%;
+    padding: 7px 4px;
+    background-color: #b91c1c !important;
+    color: #ffffff !important;
+    border: 1px solid #ef4444 !important;
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 3px;
+    margin-bottom: 3px;
+  }
+
+  /* CÁC NÚT PHỤ VÀ ĐỊNH DẠNG KHÁC */
+  .sub-row {
+    margin-top: 3px;
+    text-align: center;
+  }
+  .btn-mini {
+    display: inline-block;
+    padding: 2px 5px;
+    margin: 1px;
+    background-color: #1f2937;
+    color: #cbd5e1 !important;
+    border: 1px solid #374151;
+    font-size: 9px;
+    text-decoration: none;
+    border-radius: 2px;
+  }
+  .code-link {
+    background-color: #030712;
+    color: #38bdf8;
+    padding: 2px 4px;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 8px;
+    border-radius: 2px;
+    margin-top: 3px;
+    word-break: break-all;
+    border: 1px solid #1f2937;
+  }
+
+  /* KHUNG BIỂU MẪU & TÌM KIẾM */
+  .block-panel {
+    background-color: #111827;
+    border: 1px solid #1e293b;
+    padding: 5px;
+    margin: 0 3px 5px 3px;
+    border-radius: 4px;
+  }
+  .panel-head {
+    font-size: 10px;
+    font-weight: bold;
+    color: #f59e0b;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .ctrl-input, .ctrl-select {
+    width: 100%;
+    padding: 4px;
+    font-size: 11px;
+    background-color: #ffffff;
+    color: #000000;
+    border: 1px solid #94a3b8;
+    display: block;
+    border-radius: 2px;
+    margin-bottom: 3px;
+  }
+  .btn-action {
+    width: 100%;
+    padding: 5px;
+    background-color: #f59e0b;
+    color: #000000;
+    font-size: 11px;
+    font-weight: bold;
+    border: 1px solid #b45309;
+    border-radius: 2px;
+    cursor: pointer;
+    text-align: center;
+  }
+
+  /* PHÂN TRANG */
+  .pager-box {
+    text-align: center;
+    padding: 5px 0;
+    margin: 6px 3px;
+    border-top: 1px dashed #334155;
+  }
+  .pager-btn {
+    padding: 3px 6px;
+    margin: 0 1px;
     display: inline-block;
     background-color: #1e293b;
     border: 1px solid #475569;
-    font-size: 12px;
-    border-radius: 4px;
+    font-size: 10px;
+    text-decoration: none;
+    border-radius: 2px;
   }
-  .pagination span.current {
+  .pager-curr {
+    padding: 3px 6px;
+    margin: 0 1px;
+    display: inline-block;
     background-color: #f59e0b;
-    color: #000;
+    color: #000000;
     font-weight: bold;
+    font-size: 10px;
+    border-radius: 2px;
   }
-  .box {
-    background-color: #1a202c;
-    border: 1px solid #334155;
-    padding: 8px;
-    margin-bottom: 8px;
-    border-radius: 6px;
-  }
-  .url-box {
-    background-color: #000000;
-    color: #00ff66;
-    padding: 6px;
-    font-family: Courier New, monospace;
-    font-size: 11px;
-    word-break: break-all;
-    border: 1px solid #22c55e44;
-    margin: 6px 0;
-    border-radius: 4px;
-  }
-  .guide-step {
-    margin-bottom: 5px;
-    font-size: 12px;
-    color: #cbd5e1;
-    line-height: 1.5;
-  }
-  .footer {
+
+  /* CHÂN TRANG */
+  .bottom-footer {
     text-align: center;
-    padding: 10px 4px;
-    margin-top: 12px;
-    border-top: 1px solid #334155;
-    font-size: 11px;
+    padding: 6px 4px;
+    margin-top: 8px;
+    border-top: 1px solid #1e293b;
+    font-size: 9px;
     color: #94a3b8;
-  }
-  .footer a {
-    color: #cbd5e1;
   }
 `;
 
@@ -256,6 +393,7 @@ export function renderLegacyHome(options: {
   host?: string;
   resChoice?: string;
   isOperaMini?: boolean;
+  playerChoice?: 'all' | 'coreplayer' | 'realplayer';
 }): string {
   const {
     channels,
@@ -268,12 +406,14 @@ export function renderLegacyHome(options: {
     host = '',
     resChoice = '240p',
     isOperaMini = false,
+    playerChoice = 'all',
   } = options;
 
   const effectiveRes = (resChoice || '240p').toLowerCase();
+  const effectivePlayer = playerChoice || 'all';
 
-  // Sort groups smartly: Put prominent standard groups first, then alphabetize the rest
-  const priorityGroups = ['VTV', 'VTC', 'HTV', 'Tin tức', 'Thể thao', 'Giải trí', 'Khoa học', 'Quốc tế', 'Phim', 'Movies', 'News', 'Sports'];
+  // Nhóm ưu tiên kênh Việt Nam lên trước
+  const priorityGroups = ['Việt Nam', 'VTV', 'VTC', 'HTV', 'Tin tức', 'Thể thao', 'Giải trí', 'Khoa học', 'Quốc tế', 'Phim'];
   const sortedGroups = [...groups].sort((a, b) => {
     const pA = priorityGroups.indexOf(a);
     const pB = priorityGroups.indexOf(b);
@@ -283,7 +423,6 @@ export function renderLegacyHome(options: {
     return a.localeCompare(b);
   });
 
-  // Build the dropdown options for groups
   let optionsHtml = `<option value="all"${currentGroup === 'all' ? ' selected="selected"' : ''}>-- Tất cả nhóm (${totalChannels} kênh) --</option>`;
   for (const g of sortedGroups) {
     const isSelected = currentGroup.toLowerCase() === g.toLowerCase();
@@ -291,479 +430,442 @@ export function renderLegacyHome(options: {
   }
 
   const hostQueryParam = host ? `&host=${encodeURIComponent(host)}` : '';
-  const hostParamOnly = host ? `?host=${encodeURIComponent(host)}` : '';
+  const playerQueryParam = effectivePlayer !== 'all' ? `&player=${encodeURIComponent(effectivePlayer)}` : '';
   const resParam = `&res=${encodeURIComponent(effectiveRes)}`;
-  const fullQueryParams = `?res=${encodeURIComponent(effectiveRes)}${hostQueryParam}`;
-  const displayHost = host || '192.168.1.xxx:3000';
+  const displayHost = host || (typeof process !== 'undefined' && process.env?.RENDER_EXTERNAL_HOSTNAME) || '192.168.1.xxx:3000';
+  const limit = 12;
 
-  // Channel items
+  // Render từng thẻ kênh
   let channelItems = '';
   if (channels.length === 0) {
-    channelItems = '<li class="channel-item" style="text-align:center;padding:16px;">Không tìm thấy kênh nào phù hợp với bộ lọc.</li>';
+    channelItems = '<li class="ch-card" style="text-align:center;padding:14px;">Không tìm thấy kênh phù hợp với tìm kiếm của bạn.</li>';
   } else {
     for (let i = 0; i < channels.length; i++) {
       const ch = channels[i];
-      const indexNum = (currentPage - 1) * 12 + i + 1;
-      const chCorePlayerM3u = `/c/${indexNum}.m3u?res=${effectiveRes}${hostQueryParam}`;
-      const chCorePlayerPls = `/c/${indexNum}.pls?res=${effectiveRes}${hostQueryParam}`;
-      const chDetailUrl = `/legacy/channel/${encodeURIComponent(ch.id)}?res=${effectiveRes}${hostQueryParam}`;
-      const chDirectTsUrl = `/c/${indexNum}?res=${effectiveRes}${hostQueryParam}`;
-      const shortUrl = `http://${displayHost}/c/${indexNum}`;
+      const indexNum = (currentPage - 1) * limit + i + 1;
+
+      // Link gọi trực tiếp ứng dụng khi nhấn nút trên trình duyệt
+      // Phục vụ MIME type chính xác và Content-Disposition: inline để Symbian kích hoạt ngay ứng dụng!
+      const launchCorePlayerUrl = `/play/coreplayer/${encodeURIComponent(ch.id)}?res=${effectiveRes}${hostQueryParam}`;
+      const launchRealPlayerUrl = `/play/realplayer/${encodeURIComponent(ch.id)}?res=${effectiveRes}${hostQueryParam}`;
+
+      // File dự phòng và stream trực tiếp
+      const chCorePls = `/c/${encodeURIComponent(ch.id)}.pls?res=${effectiveRes}${hostQueryParam}`;
+      const chRealMp4 = `/c/${encodeURIComponent(ch.id)}.mp4?res=${effectiveRes}${hostQueryParam}`;
+      const chDetailUrl = `/legacy/channel/${encodeURIComponent(ch.id)}?res=${effectiveRes}&player=${effectivePlayer}${hostQueryParam}`;
+      const shortUrl = `http://${displayHost}/c/${encodeURIComponent(ch.id)}.ts`;
 
       channelItems += `
-        <li class="channel-item">
-          <div style="margin-bottom:3px;">
-            <a class="channel-link" href="${chDetailUrl}">
+        <li class="ch-card">
+          <div class="ch-header">
+            <span class="badge-cat">${escapeHtml(ch.group)}</span>
+            <span class="badge-live">&#10003; Online</span>
+            <a class="ch-name-link" href="${chDetailUrl}">
               ${indexNum}. ${escapeHtml(ch.name)}
             </a>
           </div>
-          <div style="margin-bottom:6px;">
-            <span class="channel-group-tag">${escapeHtml(ch.group)}</span>
-            <span style="font-size:11px;color:#94a3b8;">${escapeHtml(ch.resolution || 'HD')} &bull; ${effectiveRes.toUpperCase()}</span>
-          </div>
 
-          <!-- Nút kích hoạt CorePlayer trực tiếp qua Opera Mini (Tải M3U) -->
-          <div>
-            <a class="btn-coreplayer" href="${chCorePlayerM3u}">
-              &#9654; Mở Bằng CorePlayer (Tải M3U)
+          <!-- NÚT GỌI ỨNG DỤNG TRỰC TIẾP KHI BẤM TRÊN TRÌNH DUYỆT -->
+          <div class="launch-box">
+            ${effectivePlayer === 'coreplayer' ? `
+            <!-- CHẾ ĐỘ CHUYÊN COREPLAYER -->
+            <a class="btn-single-core" href="${launchCorePlayerUrl}" title="Nhấn để mở CorePlayer">
+              &#9654; MỞ COREPLAYER (TỰ ĐỘNG)
             </a>
-            <div style="font-size:10px;color:#86efac;text-align:center;margin-top:2px;">
-              (Bấm "Mở" khi Opera Mini hỏi để xem ngay)
+            <div class="sub-row">
+              <a class="btn-mini" href="${chCorePls}">&#128251; Tải .PLS</a>
+              <a class="btn-mini" href="/c/${encodeURIComponent(ch.id)}.ts?res=${effectiveRes}${hostQueryParam}">&#128246; Luồng .TS</a>
+              <a class="btn-mini" href="${chDetailUrl}">&#128250; Chi tiết</a>
             </div>
+            ` : effectivePlayer === 'realplayer' ? `
+            <!-- CHẾ ĐỘ CHUYÊN REALPLAYER -->
+            <a class="btn-single-real" href="${launchRealPlayerUrl}" title="Nhấn để mở RealPlayer">
+              &#9654; MỞ REALPLAYER (TỰ ĐỘNG)
+            </a>
+            <div class="sub-row">
+              <a class="btn-mini" href="${chRealMp4}">&#127916; Luồng MP4</a>
+              <a class="btn-mini" href="/api/channel/${encodeURIComponent(ch.id)}/realplayer.ram?res=${effectiveRes}${hostQueryParam}&dl=1">&#128190; Tải RAM</a>
+              <a class="btn-mini" href="${chDetailUrl}">&#128250; Chi tiết</a>
+            </div>
+            ` : `
+            <!-- CHẾ ĐỘ SONG SONG (TẤT CẢ) -->
+            <div class="dual-grid">
+              <a class="btn-call-core" href="${launchCorePlayerUrl}" title="Mở trực tiếp bằng CorePlayer">
+                &#9654; COREPLAYER
+              </a>
+              <a class="btn-call-real" href="${launchRealPlayerUrl}" title="Mở trực tiếp bằng RealPlayer">
+                &#9654; REALPLAYER
+              </a>
+            </div>
+            <div class="sub-row">
+              <a class="btn-mini" href="${chCorePls}">.PLS</a>
+              <a class="btn-mini" href="${chRealMp4}">MP4/3GP</a>
+              <a class="btn-mini" href="${chDetailUrl}">Chi tiết &amp; Link</a>
+            </div>
+            `}
           </div>
 
-          <div style="margin-top:4px;">
-            <a class="btn" style="background-color:#1e3a8a;border-color:#3b82f6;" href="${chCorePlayerPls}">&#128251; File .PLS</a>
-            <a class="btn" style="background-color:#334155;border-color:#475569;" href="${chDirectTsUrl}">&#128246; Luồng .TS</a>
-            <a class="btn" style="background-color:#0284c7;border-color:#38bdf8;" href="${chDetailUrl}">&#128250; Chi tiết</a>
-          </div>
-
-          <div style="font-size:10px;color:#94a3b8;margin-top:4px;">
-            Link CorePlayer: <code style="color:#4ade80;">${shortUrl}</code>
+          <div class="code-link">
+            URL: ${shortUrl}
           </div>
         </li>
       `;
     }
   }
 
-  // Pagination
-  let paginationHtml = '<div class="pagination">';
+  // Khối phân trang
+  let paginationHtml = '<div class="pager-box">';
   if (currentPage > 1) {
-    paginationHtml += `<a href="/legacy?page=${currentPage - 1}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}${resParam}${hostQueryParam}">&laquo; Trang trước</a>`;
+    paginationHtml += `<a class="pager-btn" href="/legacy?page=${currentPage - 1}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}${resParam}${playerQueryParam}${hostQueryParam}" accesskey="7">&laquo; Trước (Phím 7)</a>`;
   }
-  paginationHtml += ` <span class="current">Trang ${currentPage}/${totalPages}</span> `;
+  paginationHtml += ` <span class="pager-curr">${currentPage}/${totalPages}</span> `;
   if (currentPage < totalPages) {
-    paginationHtml += `<a href="/legacy?page=${currentPage + 1}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}${resParam}${hostQueryParam}">Trang sau &raquo;</a>`;
+    paginationHtml += `<a class="pager-btn" href="/legacy?page=${currentPage + 1}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}${resParam}${playerQueryParam}${hostQueryParam}" accesskey="9">Sau (Phím 9) &raquo;</a>`;
   }
   paginationHtml += '</div>';
-
-  const isFiltering = currentGroup !== 'all' || Boolean(searchQuery.trim());
 
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>MY IPTV - Nokia E72 / Opera Mini &amp; CorePlayer</title>
+  <title>IPTV Nokia E72 - CorePlayer &amp; RealPlayer</title>
   <style type="text/css">
 ${LEGACY_CSS}
   </style>
 </head>
 <body>
-  <!-- BANNER NHẬN DIỆN OPERA MINI & NOKIA E72 -->
-  <div class="detect-banner">
-    &#10003; THIẾT BỊ: NOKIA E72 (SYMBIAN S60v3 FP2) - CHUẨN QVGA 320x240
+  <!-- HEADER NOKIA E72 -->
+  <div class="top-header">
+    <div class="brand-title">&#128250; MY IPTV - NOKIA E72</div>
+    <div class="brand-sub">CorePlayer 1.36 &amp; RealPlayer S60 (QVGA 320x240)</div>
   </div>
 
-  ${isOperaMini ? `
-  <div class="opera-banner">
-    <strong style="color:#fdba74;font-size:13px;">📱 ĐÃ KẾT NỐI QUA TRÌNH DUYỆT OPERA MINI</strong><br />
-    &bull; <strong>Cách phát kênh bằng CorePlayer:</strong> Nhấn nút xanh <b>[ ▶ Mở CorePlayer (M3U) ]</b> &rarr; Khi Opera Mini hỏi <em>"Tải về / Mở"</em>, hãy bấm <b>"Mở" (Open)</b>.<br />
-    &bull; Ứng dụng <strong>CorePlayer 1.36</strong> sẽ tự động khởi động và giải mã luồng truyền hình mượt mà!
-  </div>` : ''}
-
-  <div class="header">
-    <h1>MY IPTV CHO NOKIA E72</h1>
-    <div style="font-size:11px;color:#cbd5e1;">Tương thích Opera Mini &amp; CorePlayer Mobile 1.36</div>
+  <div class="status-pill">
+    &#10003; THIẾT BỊ: NOKIA E72 (ARM11 600MHz &bull; S60v3 FP2)
   </div>
 
-  <!-- THANH CHỌN ĐỘ PHÂN GIẢI CHO COREPLAYER -->
-  <div class="box" style="background:#172554;border-color:#2563eb;text-align:center;">
-    <div style="font-weight:bold;color:#60a5fa;margin-bottom:4px;font-size:12px;">
-      ⚡ CHỌN ĐỘ PHÂN GIẢI XEM CHO COREPLAYER:
-    </div>
-    <div style="margin:4px 0;">
-      <a class="btn-res ${effectiveRes === '180p' ? 'btn-res-active' : 'btn-res-inactive'}" href="/legacy?page=${currentPage}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}&res=180p${hostQueryParam}">
-        ⚡ 180p Siêu nhẹ (2G/3G)
-      </a>
-      <a class="btn-res ${effectiveRes === '240p' ? 'btn-res-active' : 'btn-res-inactive'}" href="/legacy?page=${currentPage}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}&res=240p${hostQueryParam}">
-        📺 240p QVGA (Chuẩn E72)
-      </a>
-      <a class="btn-res ${effectiveRes === '360p' ? 'btn-res-active' : 'btn-res-inactive'}" href="/legacy?page=${currentPage}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}&res=360p${hostQueryParam}">
-        📱 360p SD (Nét hơn)
-      </a>
-    </div>
-    <div style="font-size:10px;color:#cbd5e1;margin-top:2px;">
-      ${effectiveRes === '180p'
-        ? '✓ Đang chọn 180p: Luồng siêu nhẹ (180kbps, 15fps), tải tức thì 1 giây trên mạng 2G/3G hoặc Wi-Fi xa.'
-        : effectiveRes === '360p'
-        ? '✓ Đang chọn 360p: Độ nét cao hơn (650kbps, 24fps) cho smartphone hoặc xem chi tiết.'
-        : '✓ Đang chọn 240p: Chuẩn tỉ lệ 320x240 của màn hình Nokia E72, CPU ARM11 600MHz giải mã mượt nhất.'}
-    </div>
+  <!-- HƯỚNG DẪN GỌI ỨNG DỤNG TRỰC TIẾP -->
+  <div class="tip-banner">
+    <b style="color:#fef08a;">📱 CÁCH MỞ KÊNH 1-CHẠM TRÊN E72:</b><br />
+    &bull; <b>CorePlayer:</b> Nhấn nút xanh <b>[ ▶ COREPLAYER ]</b> &rarr; Trình duyệt tự gọi CorePlayer giải mã luồng.<br />
+    &bull; <b>RealPlayer:</b> Nhấn nút đỏ <b>[ ▶ REALPLAYER ]</b> &rarr; Máy tự bật RealPlayer có sẵn trong ROM!<br />
+    <em>(Trên Opera Mini: Khi hiện thông báo, chọn <b>"Mở" / "Open"</b>)</em>
   </div>
 
-  <!-- HỘP THÔNG TIN MÁY CHỦ RENDER & CẦU NỐI E72-RELAY -->
-  <div class="box" style="background:#1e1b4b;border:1px solid #6366f1;">
-    <strong style="color:#a5b4fc;font-size:12px;">🌐 MÁY CHỦ CLOUD RENDER:</strong>
-    <div style="font-size:11px;color:#c7d2fe;margin:3px 0 6px 0;line-height:1.4;">
-      Địa chỉ Render: <code>https://my-iptv-uguq.onrender.com</code><br />
-      <em>* Do Render dùng mã hóa HTTPS hiện đại, CorePlayer trên E72 sẽ bị lỗi SSL nếu kết nối trực tiếp.</em>
+  <!-- CHỌN CHẾ ĐỘ TRÌNH PHÁT (PLAYER TABS) -->
+  <div class="mode-tabs">
+    <div style="font-size:9px;font-weight:bold;color:#94a3b8;margin-bottom:2px;">
+      CHỌN ỨNG DỤNG MỤC TIÊU:
     </div>
-    <div style="text-align:center;margin:4px 0;">
-      <a class="btn" style="background:#4338ca;border:1px solid #818cf8;color:#fff;display:inline-block;padding:6px 12px;font-size:11px;font-weight:bold;" href="/e72-relay.py">
-        📥 TẢI CẦU NỐI E72-RELAY.PY (CHO MÁY TÍNH CÙNG WI-FI)
-      </a>
-    </div>
-    <div style="font-size:10px;color:#cbd5e1;margin-top:4px;">
-      💡 <b>Cách xem tốt nhất:</b> Chạy <code>python e72-relay.py</code> trên máy tính &rarr; Điền IP máy tính vào ô bên dưới (VD: <code>192.168.1.15:8080</code>) &rarr; CorePlayer phát mượt mà không lỗi SSL!
-    </div>
-  </div>
-
-  <!-- CẤU HÌNH IP MÁY CHỦ LAN (NẾU DÙNG WI-FI NHÀ) -->
-  <div class="box" style="background:#0f172a;border-color:#334155;">
-    <form action="/legacy" method="GET">
-      <input type="hidden" name="group" value="${escapeHtml(currentGroup)}" />
-      <input type="hidden" name="q" value="${escapeHtml(searchQuery)}" />
-      <input type="hidden" name="res" value="${escapeHtml(effectiveRes)}" />
-      <div class="form-label" style="color:#38bdf8;">&#128246; Cấu hình IP máy tính chạy Relay (Wi-Fi):</div>
-      <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">
-        Nhập IP máy tính (VD: <code>192.168.1.15:8080</code>) để tạo link HTTP trực tiếp cho CorePlayer:
-      </div>
-      <input class="input-text" type="text" name="host" value="${escapeHtml(host)}" placeholder="VD: 192.168.1.15:8080" />
-      <input class="btn-search" style="background:#0284c7;color:#fff;border-color:#0369a1;margin-top:4px;" type="submit" value="Lưu IP Cho CorePlayer" />
-    </form>
-  </div>
-
-  <!-- NÚT TẢI TOÀN BỘ DANH SÁCH KÊNH CHO COREPLAYER -->
-  <div class="box" style="text-align:center;background:#0d2818;border-color:#1e7e34;">
-    <strong style="color:#4ade80;font-size:13px;">&#128190; TẢI DANH SÁCH TẤT CẢ KÊNH CHO COREPLAYER:</strong>
-    <p style="font-size:11px;margin:4px 0 8px 0;color:#c7f9cc;">
-      Tải 1 file .m3u duy nhất lưu vào thẻ nhớ E:\\ của E72 để mở tất cả kênh trong CorePlayer (Đã lọc chuẩn QVGA 320x240, thuần HTTP không lỗi SSL):
-    </p>
-    <a class="btn" style="background:#15803d;border:1px solid #4ade80;color:#fff;display:inline-block;padding:8px 12px;font-weight:bold;text-decoration:none;margin:2px;" href="/api/channels/e72.m3u?res=${effectiveRes}${hostQueryParam}" accesskey="0">
-      &#11015; TẢI FILE .M3U TOÀN BỘ KÊNH (Phím 0)
+    <a class="tab-item ${effectivePlayer === 'all' ? 'tab-all-active' : 'tab-idle'}" href="/legacy?page=1&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}&player=all${resParam}${hostQueryParam}" accesskey="4">
+      ⚡ Cả 2 App (Phím 4)
     </a>
-    <a class="btn" style="background:#1e3a8a;border:1px solid #3b82f6;color:#fff;display:inline-block;padding:8px 12px;font-weight:bold;text-decoration:none;margin:2px;" href="/api/channels/e72.pls?res=${effectiveRes}${hostQueryParam}" accesskey="p">
-      &#11015; TẢI FILE .PLS TOÀN BỘ KÊNH (Phím P)
+    <a class="tab-item ${effectivePlayer === 'coreplayer' ? 'tab-core-active' : 'tab-idle'}" href="/legacy?page=1&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}&player=coreplayer${resParam}${hostQueryParam}" accesskey="2">
+      🟢 CorePlayer (Phím 2)
+    </a>
+    <a class="tab-item ${effectivePlayer === 'realplayer' ? 'tab-real-active' : 'tab-idle'}" href="/legacy?page=1&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}&player=realplayer${resParam}${hostQueryParam}" accesskey="3">
+      🔴 RealPlayer (Phím 3)
     </a>
   </div>
 
-  <!-- TÌM KIẾM & BỘ LỌC KÊNH -->
-  <div class="search-panel">
+  <!-- CHỌN ĐỘ PHÂN GIẢI (RESOLUTION STRIP) -->
+  <div class="res-strip">
+    <div class="res-label">ĐỘ PHÂN GIẢI LUỒNG VIDEO (GIẢI MÃ MƯỢT):</div>
+    <a class="btn-res-pill ${effectiveRes === '180p' ? 'res-on' : 'res-off'}" href="/legacy?page=${currentPage}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}&res=180p${playerQueryParam}${hostQueryParam}">
+      ⚡ 180p (2G/3G nhẹ)
+    </a>
+    <a class="btn-res-pill ${effectiveRes === '240p' ? 'res-on' : 'res-off'}" href="/legacy?page=${currentPage}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}&res=240p${playerQueryParam}${hostQueryParam}">
+      📺 240p (Chuẩn E72)
+    </a>
+    <a class="btn-res-pill ${effectiveRes === '360p' ? 'res-on' : 'res-off'}" href="/legacy?page=${currentPage}&group=${encodeURIComponent(currentGroup)}&q=${encodeURIComponent(searchQuery)}&res=360p${playerQueryParam}${hostQueryParam}">
+      📱 360p (Nét hơn)
+    </a>
+  </div>
+
+  <!-- BỘ LỌC VÀ TÌM KIẾM BẰNG PHÍM QWERTY -->
+  <div class="block-panel">
     <form action="/legacy" method="GET">
       ${host ? `<input type="hidden" name="host" value="${escapeHtml(host)}" />` : ''}
       <input type="hidden" name="res" value="${escapeHtml(effectiveRes)}" />
+      <input type="hidden" name="player" value="${escapeHtml(effectivePlayer)}" />
 
-      <div class="form-group">
-        <label class="form-label" for="search-input">1. Tìm kiếm tên kênh (Phím tắt 1):</label>
-        <input class="input-text" type="text" id="search-input" name="q" value="${escapeHtml(searchQuery)}" placeholder="Nhập tên kênh (vd: VTV1, Bóng đá)..." accesskey="1" />
-      </div>
+      <span class="panel-head">&#128269; Tìm kênh (Phím tắt 1):</span>
+      <input class="ctrl-input" type="text" name="q" value="${escapeHtml(searchQuery)}" placeholder="Nhập tên kênh (vd: VTV1, HTV, Bong da)..." accesskey="1" />
 
-      <div class="form-group">
-        <label class="form-label" for="group-select">2. Chọn nhóm kênh (Danh sách):</label>
-        <select class="select-box" id="group-select" name="group">
-          ${optionsHtml}
-        </select>
-      </div>
+      <span class="panel-head">Thể loại nhóm:</span>
+      <select class="ctrl-select" name="group">
+        ${optionsHtml}
+      </select>
 
-      <div>
-        <input class="btn-search" type="submit" value="&#128269; TÌM KIẾM &amp; LỌC KÊNH" />
-      </div>
-
-      ${isFiltering ? `
-      <div style="text-align:center;margin-top:6px;">
-        <a href="/legacy${fullQueryParams}" style="color:#f87171;font-size:12px;font-weight:bold;">[ Xóa tìm kiếm / Xem tất cả kênh ]</a>
-      </div>` : ''}
+      <input class="btn-action" type="submit" value="LỌC KÊNH (ENTER)" />
     </form>
   </div>
 
-  ${isFiltering ? `
-  <div class="filter-status">
-    Đang lọc:
-    ${currentGroup !== 'all' ? `Nhóm: <b>${escapeHtml(currentGroup)}</b>` : ''}
-    ${(currentGroup !== 'all' && searchQuery) ? ' &bull; ' : ''}
-    ${searchQuery ? `Từ khóa: <b>"${escapeHtml(searchQuery)}"</b>` : ''}
-    &mdash; Có <b>${totalChannels}</b> kênh phù hợp.
-  </div>` : ''}
-
-  <!-- DANH SÁCH KÊNH CHO OPERA MINI -->
-  <ul class="channel-list">
+  <!-- DANH SÁCH KÊNH (TỐI ƯU HIỂN THỊ QVGA 320x240) -->
+  <ul class="ch-list">
     ${channelItems}
   </ul>
 
+  <!-- PHÂN TRANG -->
   ${totalPages > 1 ? paginationHtml : ''}
 
-  <!-- HƯỚNG DẪN COREPLAYER 1.36 TRÊN OPERA MINI -->
-  <div class="box" style="margin-top:10px;">
-    <strong style="color:#f59e0b;font-size:13px;">📖 Hướng dẫn Opera Mini &amp; CorePlayer 1.36:</strong>
-    <div class="guide-step">&#8226; <b>Cách 1 (Tốt nhất trên Opera Mini):</b> Nhấn nút xanh <b>[ Mở CorePlayer (M3U) ]</b> &rarr; Opera Mini hiện thông báo tải tệp &rarr; Chọn <b>Mở (Open)</b> &rarr; CorePlayer tự bật và phát ngay.</div>
-    <div class="guide-step">&#8226; <b>Cách 2:</b> Nhấn nút <b>[ Chi tiết &amp; Link ]</b> &rarr; Sao chép đường link <code>http://.../e72.ts</code> &rarr; Mở CorePlayer &rarr; Bấm <b>Menu &gt; Open URL</b> &rarr; Dán link và bấm phát.</div>
-    <div class="guide-step">&#8226; <b>Cách 3 (Lưu vào thẻ nhớ):</b> Tải file M3U toàn bộ kênh về thẻ nhớ <code>E:\\</code> &rarr; Mở CorePlayer &rarr; <b>Menu &gt; Open File</b> &rarr; Chọn file để có danh bạ chuyển kênh qua phím D-Pad.</div>
-    <div style="margin-top:6px;text-align:center;">
-      <a class="btn" style="background:#2563eb;color:#fff;border:1px solid #60a5fa;" href="/legacy/guide${fullQueryParams}" accesskey="h">
-        📖 Xem Hướng Dẫn Cấu Hình CorePlayer Chi Tiết (Phím H) &raquo;
+  <!-- NHẢY TRANG NHANH CHO DANH SÁCH DÀI -->
+  ${totalPages > 1 ? `
+  <div class="block-panel" style="text-align:center;">
+    <form action="/legacy" method="GET" style="display:inline-block;">
+      ${host ? `<input type="hidden" name="host" value="${escapeHtml(host)}" />` : ''}
+      <input type="hidden" name="group" value="${escapeHtml(currentGroup)}" />
+      <input type="hidden" name="q" value="${escapeHtml(searchQuery)}" />
+      <input type="hidden" name="res" value="${escapeHtml(effectiveRes)}" />
+      <input type="hidden" name="player" value="${escapeHtml(effectivePlayer)}" />
+      <span style="font-size:10px;color:#cbd5e1;">Nhảy tới trang (1 - ${totalPages}): </span>
+      <input style="width:40px;padding:2px;font-size:11px;text-align:center;" type="number" name="page" min="1" max="${totalPages}" value="${currentPage}" />
+      <input class="pager-btn" style="padding:2px 8px;background:#f59e0b;color:#000;font-weight:bold;" type="submit" value="Đi" />
+    </form>
+  </div>
+  ` : ''}
+
+  <!-- CẤU HÌNH IP MÁY TÍNH LAN TRUNG GIAN (WI-FI) -->
+  <div class="block-panel">
+    <form action="/legacy" method="GET">
+      <input type="hidden" name="group" value="${escapeHtml(currentGroup)}" />
+      <input type="hidden" name="q" value="${escapeHtml(searchQuery)}" />
+      <input type="hidden" name="player" value="${escapeHtml(effectivePlayer)}" />
+      <input type="hidden" name="res" value="${escapeHtml(effectiveRes)}" />
+      <span class="panel-head">&#128246; IP Máy Tính Relay LAN (Nếu xem qua Wi-Fi):</span>
+      <input class="ctrl-input" type="text" name="host" value="${escapeHtml(host)}" placeholder="VD: 192.168.1.15:3000" accesskey="s" />
+      <input class="btn-action" style="background:#0284c7;color:#fff;border-color:#0369a1;" type="submit" value="Lưu IP Cho Trình Phát (Phím S)" />
+    </form>
+  </div>
+
+  <!-- TẢI TRỌN BỘ DANH SÁCH KÊNH CHO CẢ 2 ỨNG DỤNG -->
+  <div class="block-panel" style="text-align:center;background:#052e16;border-color:#15803d;">
+    <strong style="color:#86efac;font-size:10px;">&#128190; TẢI DANH BẠ KÊNH LƯU VÀO THẺ NHỚ E:\ :</strong>
+    <div style="margin-top:4px;">
+      <a class="btn-mini" style="background:#15803d;color:#fff !important;border-color:#4ade80;font-weight:bold;" href="/api/channels/coreplayer.m3u?res=${effectiveRes}${hostQueryParam}&dl=1">
+        &#11015; M3U Cho CorePlayer
+      </a>
+      <a class="btn-mini" style="background:#b91c1c;color:#fff !important;border-color:#f87171;font-weight:bold;" href="/realplayer.ram?res=${effectiveRes}${hostQueryParam}&dl=1">
+        &#11015; RAM Cho RealPlayer
+      </a>
+      <a class="btn-mini" style="background:#1e3a8a;color:#fff !important;border-color:#60a5fa;" href="/api/channels/coreplayer.pls?res=${effectiveRes}${hostQueryParam}&dl=1">
+        &#11015; File .PLS
       </a>
     </div>
   </div>
 
-  <div class="footer">
-    <div>Chế độ: <b>Nokia E72 / Opera Mini &amp; CorePlayer</b></div>
-    <div style="margin-top:6px;">
-      <a href="/legacy/guide${fullQueryParams}">[ Cấu hình CorePlayer ]</a> |
-      <a href="/api/channels/e72.m3u${fullQueryParams}">[ Tải Playlist M3U ]</a> |
-      <a href="/?view=modern">[ Giao diện Hiện Đại ]</a>
+  <!-- LIÊN KẾT CẨM NANG -->
+  <div class="block-panel" style="text-align:center;">
+    <a class="btn-mini" style="background:#2563eb;color:#fff !important;border-color:#60a5fa;display:block;padding:6px;font-size:11px;font-weight:bold;" href="/legacy/guide?res=${effectiveRes}&player=${effectivePlayer}${hostQueryParam}" accesskey="h">
+      📖 Cẩm Nang Cấu Hình CorePlayer &amp; RealPlayer (Phím H) &raquo;
+    </a>
+  </div>
+
+  <div class="bottom-footer">
+    <div>Nokia E72 Multimedia Engine &bull; S60v3 FP2</div>
+    <div style="margin-top:3px;">
+      <a href="/legacy?player=coreplayer${hostQueryParam}">CorePlayer</a> |
+      <a href="/legacy?player=realplayer${hostQueryParam}">RealPlayer</a> |
+      <a href="/?view=modern">Bản Modern PC</a>
     </div>
   </div>
 </body>
 </html>`;
 }
 
-export function renderLegacyChannel(channel: Channel, host: string = '', resChoice: string = '240p'): string {
+export function renderLegacyChannel(
+  channel: Channel,
+  host: string = '',
+  resChoice: string = '240p',
+  playerChoice: 'all' | 'coreplayer' | 'realplayer' = 'all'
+): string {
   const effectiveRes = (resChoice || '240p').toLowerCase();
-  const hostParamOnly = host ? `?host=${encodeURIComponent(host)}` : '';
-  const queryParams = host ? `?host=${encodeURIComponent(host)}&res=${effectiveRes}` : `?res=${effectiveRes}`;
-  const directOpenUrl = `/open/${encodeURIComponent(channel.id)}${queryParams}`;
-  const corePlayerM3uUrl = `/c/${encodeURIComponent(channel.id)}.m3u${queryParams}`;
-  const corePlayerPlsUrl = `/c/${encodeURIComponent(channel.id)}.pls${queryParams}`;
-  const directStreamUrl = channel.stream_url;
+  const hostParam = host ? `&host=${encodeURIComponent(host)}` : '';
+  const displayHost = host || (typeof process !== 'undefined' && process.env?.RENDER_EXTERNAL_HOSTNAME) || '192.168.1.xxx:3000';
 
-  const displayHost = host || '192.168.1.xxx:3000';
-  const shortE72Url = `http://${displayHost}/c/${encodeURIComponent(channel.id)}?res=${effectiveRes}`;
-  const fullLiveTsUrl = `http://${displayHost}/api/channel/${encodeURIComponent(channel.id)}/live.ts`;
+  // Direct app launch URLs
+  const launchCorePlayerUrl = `/play/coreplayer/${encodeURIComponent(channel.id)}?res=${effectiveRes}${hostParam}`;
+  const launchRealPlayerUrl = `/play/realplayer/${encodeURIComponent(channel.id)}?res=${effectiveRes}${hostParam}`;
+
+  const chCorePls = `/c/${encodeURIComponent(channel.id)}.pls?res=${effectiveRes}${hostParam}`;
+  const chRealMp4 = `/c/${encodeURIComponent(channel.id)}.mp4?res=${effectiveRes}${hostParam}`;
+  const chRealRamDl = `/c/${encodeURIComponent(channel.id)}.ram?res=${effectiveRes}${hostParam}&dl=1`;
+
+  const shortTsUrl = `http://${displayHost}/c/${encodeURIComponent(channel.id)}.ts?res=${effectiveRes}`;
+  const shortMp4Url = `http://${displayHost}/c/${encodeURIComponent(channel.id)}.mp4?res=${effectiveRes}`;
+  const rtspUrl = `rtsp://${displayHost}/live/${encodeURIComponent(channel.id)}`;
 
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>${escapeHtml(channel.name)} - Nokia E72 / CorePlayer</title>
+  <title>${escapeHtml(channel.name)} - Phát Trên Nokia E72</title>
   <style type="text/css">
 ${LEGACY_CSS}
   </style>
 </head>
 <body>
-  <div class="detect-banner">
-    &#10003; KÊNH: ${escapeHtml(channel.name)} - NOKIA E72 (S60)
+  <div class="top-header">
+    <div class="brand-title">${escapeHtml(channel.name)}</div>
+    <div class="brand-sub">Nhóm: ${escapeHtml(channel.group)} &bull; ${effectiveRes.toUpperCase()}</div>
   </div>
 
-  <div class="header">
-    <h1>${escapeHtml(channel.name)}</h1>
-    <div style="font-size:11px;color:#f59e0b;">Nhóm: ${escapeHtml(channel.group)} &bull; Định dạng: ${escapeHtml(channel.format.toUpperCase())}</div>
+  <div class="status-pill">
+    &#10003; KÊNH ONLINE - SẴN SÀNG KHỞI CHẠY TRỰC TIẾP
   </div>
 
-  <!-- TÙY CHỌN ĐỘ PHÂN GIẢI -->
-  <div class="box" style="background:#172554;border:1px solid #2563eb;text-align:center;">
-    <div style="font-weight:bold;color:#60a5fa;margin-bottom:4px;font-size:12px;">
-      ⚡ CHỌN ĐỘ PHÂN GIẢI (TĂNG TỐC TẢI &amp; MƯỢT HÌNH):
-    </div>
-    <div style="margin:4px 0;">
-      <a class="btn-res ${effectiveRes === '180p' ? 'btn-res-active' : 'btn-res-inactive'}" href="/legacy/channel/${encodeURIComponent(channel.id)}?res=180p${host ? `&host=${encodeURIComponent(host)}` : ''}">
-        ⚡ 180p Siêu nhẹ (2G/3G)
-      </a>
-      <a class="btn-res ${effectiveRes === '240p' ? 'btn-res-active' : 'btn-res-inactive'}" href="/legacy/channel/${encodeURIComponent(channel.id)}?res=240p${host ? `&host=${encodeURIComponent(host)}` : ''}">
-        📺 240p QVGA (Chuẩn E72)
-      </a>
-      <a class="btn-res ${effectiveRes === '360p' ? 'btn-res-active' : 'btn-res-inactive'}" href="/legacy/channel/${encodeURIComponent(channel.id)}?res=360p${host ? `&host=${encodeURIComponent(host)}` : ''}">
-        📱 360p SD (Nét hơn)
-      </a>
-    </div>
-    <div style="font-size:10px;color:#cbd5e1;margin-top:2px;">
-      ${effectiveRes === '180p'
-        ? '✓ Đang chọn 180p: Siêu nhẹ, tải tức thì không gián đoạn.'
-        : effectiveRes === '360p'
-        ? '✓ Đang chọn 360p: Độ nét tốt hơn cho màn hình lớn.'
-        : '✓ Đang chọn 240p: Chuẩn tỉ lệ màn hình ngang E72 320x240.'}
-    </div>
-  </div>
-
-  <!-- CẢNH BÁO LỖI HTTPS CỦA COREPLAYER -->
-  <div class="box" style="background:#3b1111;border:1px solid #ef4444;color:#fca5a5;font-size:12px;line-height:1.5;">
-    <strong style="color:#f87171;font-size:13px;">⚠️ KHẮC PHỤC LỖI "HTTPS hỗ trợ các thỏa thuận không được":</strong><br />
-    &bull; <strong>Nguyên nhân:</strong> CorePlayer v1.3.6 trên E72 chỉ hỗ trợ <strong>HTTP thường</strong>. Máy không hỗ trợ chuẩn TLS 1.2/1.3 của HTTPS hiện đại.<br />
-    &bull; <strong>Giải pháp:</strong> Nhập IP máy tính LAN bên dưới để tạo link và file M3U thuần HTTP.
-  </div>
-
-  <!-- CẤU HÌNH IP LAN -->
-  <div class="box" style="background:#0f172a;border:1px solid #334155;">
-    <form action="/legacy/channel/${encodeURIComponent(channel.id)}" method="GET">
-      <input type="hidden" name="res" value="${escapeHtml(effectiveRes)}" />
-      <div class="form-label" style="color:#38bdf8;">&#128246; Cấu hình IP máy tính chạy Relay (Wi-Fi):</div>
-      <input class="input-text" type="text" name="host" value="${escapeHtml(host)}" placeholder="VD: 192.168.1.15:8080" />
-      <input class="btn-search" style="background:#0284c7;color:#fff;border-color:#0369a1;margin-top:4px;" type="submit" value="Cập Nhật IP Cho Kênh" />
-    </form>
-  </div>
-
-  <!-- NÚT PHÁT CHO OPERA MINI & COREPLAYER -->
-  <div class="box" style="text-align:center;">
-    <a class="btn-coreplayer" style="background:#15803d;border:1px solid #22c55e;color:#fff;display:block;margin:6px auto;width:90%;padding:10px 8px;text-decoration:none;font-weight:bold;font-size:14px;" href="${corePlayerM3uUrl}">
-      &#9654; MỞ BẰNG COREPLAYER (${escapeHtml(effectiveRes.toUpperCase())} - TẢI M3U)
-    </a>
-    <div style="font-size:11px;color:#86efac;margin-bottom:6px;">
-      (Nhấn vào nút trên &rarr; Khi Opera Mini hỏi: Chọn <b>"Mở" (Open)</b> để xem ngay)
-    </div>
-
-    <a class="btn" style="background:#1e3a8a;border:1px solid #3b82f6;color:#fff;display:block;margin:4px auto;width:90%;padding:7px 8px;text-decoration:none;font-weight:bold;" href="${corePlayerPlsUrl}">
-      &#128251; TẢI FILE .PLS CHO COREPLAYER (${escapeHtml(effectiveRes.toUpperCase())})
-    </a>
-
-    <a class="btn" style="background:#0284c7;border:1px solid #38bdf8;color:#fff;display:block;margin:4px auto;width:90%;padding:7px 8px;text-decoration:none;font-weight:bold;" href="/c/${encodeURIComponent(channel.id)}?res=${effectiveRes}${host ? `&host=${encodeURIComponent(host)}` : ''}">
-      &#128246; PHÁT TRỰC TIẾP LUỒNG .TS (${escapeHtml(effectiveRes.toUpperCase())})
-    </a>
-
-    <a class="btn" style="background:#334155;border:1px solid #475569;color:#fff;display:block;margin:4px auto;width:90%;padding:6px 8px;text-decoration:none;font-size:11px;" href="/api/channel/${encodeURIComponent(channel.id)}/live.ts${host ? `&host=${encodeURIComponent(host)}` : ''}">
-      &#9654; Mở Luồng MPEG-TS Gốc (Không Nén)
-    </a>
-
-    <a class="btn" style="background:#ea580c;border:1px solid #f97316;color:#fff;display:block;margin:4px auto;width:90%;padding:7px 8px;text-decoration:none;font-weight:bold;" href="/open/${encodeURIComponent(channel.id)}?player=vlc">
-      &#128241; XEM TRÊN VLC PLAYER (CHO SMARTPHONE)
-    </a>
-
-    <div style="margin: 8px 0;">
-      <a class="btn" href="/legacy${hostParamOnly}">&laquo; QUAY LẠI DANH SÁCH</a>
-    </div>
-  </div>
-
-  <!-- HỘP LINK HTTP COPY TRỰC TIẾP VÀO COREPLAYER -->
-  <div class="box">
-    <strong style="color:#4ade80;">1. LINK STREAM NGẮN ${escapeHtml(effectiveRes.toUpperCase())} CHO COREPLAYER:</strong>
-    <p style="font-size:11px;margin:2px 0 4px 0;color:#bbb;">
-      Nhập link ngắn này vào CorePlayer &gt; <strong>Menu &gt; Open URL</strong> (chuẩn <strong>http://</strong>):
+  <!-- MỤC 1: PHÁT VỚI COREPLAYER MOBILE -->
+  <div class="block-panel" style="border-color:#22c55e;background:#052e16;">
+    <strong style="color:#4ade80;font-size:12px;">🟢 1. PHÁT BẰNG COREPLAYER 1.36</strong>
+    <p style="font-size:9px;color:#a7f3d0;margin:2px 0 5px 0;">
+      Giải mã phần cứng DirectDraw mượt mà, âm thanh AAC sống động:
     </p>
-    <div class="url-box">${escapeHtml(shortE72Url)}</div>
-    <textarea rows="2" style="width:96%;font-size:11px;background:#111;color:#0f6;border:1px solid #444;" readonly="readonly">${escapeHtml(shortE72Url)}</textarea>
+
+    <!-- Nút gọi trực tiếp CorePlayer -->
+    <a class="btn-single-core" href="${launchCorePlayerUrl}">
+      &#9654; KÍCH HOẠT COREPLAYER (TỰ ĐỘNG)
+    </a>
+    <div style="font-size:9px;color:#86efac;text-align:center;margin-bottom:4px;">
+      (Trình duyệt tự chuyển tiếp tới CorePlayer để phát ngay)
+    </div>
+
+    <div style="text-align:center;">
+      <a class="btn-mini" href="${chCorePls}">&#128251; Tải File .PLS</a>
+      <a class="btn-mini" href="/c/${encodeURIComponent(channel.id)}.ts?res=${effectiveRes}${hostParam}">&#128246; Luồng .TS Trực Tiếp</a>
+      <a class="btn-mini" href="/c/${encodeURIComponent(channel.id)}.m3u?res=${effectiveRes}${hostParam}&dl=1">&#128190; Lưu .M3U Vào Thẻ</a>
+    </div>
+
+    <div style="margin-top:5px;font-size:9px;color:#cbd5e1;">
+      Link gõ vào CorePlayer &gt; Open URL:<br />
+      <div class="code-link">${escapeHtml(shortTsUrl)}</div>
+    </div>
   </div>
 
-  <div class="box">
-    <strong style="color:#f59e0b;">HƯỚNG DẪN XEM TRÊN OPERA MINI &amp; COREPLAYER:</strong>
-    <div class="guide-step">&#8226; <b>Cách 1 (Nhanh nhất):</b> Nhấn nút xanh <b>[ MỞ BẰNG COREPLAYER (TẢI M3U) ]</b> &rarr; Opera Mini hiện thông báo &rarr; Chọn <b>"Mở" (Open)</b> &rarr; CorePlayer tự bật và phát ngay.</div>
-    <div class="guide-step">&#8226; <b>Cách 2 (Nhập link ngắn):</b> Mở CorePlayer trên E72 &gt; <b>Menu &gt; Open URL</b> &gt; nhập link chuẩn HTTP: <b>${escapeHtml(shortE72Url)}</b>.</div>
-    <div class="guide-step">&#8226; <b>Cách 3 (Lưu playlist):</b> Tải file .m3u hoặc .pls vào thẻ nhớ E: &gt; Trong CorePlayer chọn <b>Menu &gt; Open File</b> &gt; mở file vừa tải.</div>
+  <!-- MỤC 2: PHÁT VỚI REALPLAYER (TÍCH HỢP ROM S60) -->
+  <div class="block-panel" style="border-color:#ef4444;background:#2d0607;">
+    <strong style="color:#f87171;font-size:12px;">🔴 2. PHÁT BẰNG REALPLAYER S60</strong>
+    <p style="font-size:9px;color:#fecaca;margin:2px 0 5px 0;">
+      Ứng dụng gốc tích hợp sẵn trên Nokia E72 (Không cần cài thêm app):
+    </p>
+
+    <!-- Nút gọi trực tiếp RealPlayer -->
+    <a class="btn-single-real" href="${launchRealPlayerUrl}">
+      &#9654; KÍCH HOẠT REALPLAYER (TỰ ĐỘNG)
+    </a>
+    <div style="font-size:9px;color:#fca5a5;text-align:center;margin-bottom:4px;">
+      (Hệ thống Symbian S60 tự mở RealPlayer.exe)
+    </div>
+
+    <div style="text-align:center;">
+      <a class="btn-mini" href="${chRealMp4}">&#127916; Luồng MP4 Trực Tiếp</a>
+      <a class="btn-mini" href="${rtspUrl}">&#128246; Link RTSP Gốc</a>
+      <a class="btn-mini" href="${chRealRamDl}">&#128190; Lưu .RAM Vào Thẻ</a>
+    </div>
+
+    <div style="margin-top:5px;font-size:9px;color:#cbd5e1;">
+      Link gõ vào RealPlayer &gt; Open URL:<br />
+      <div class="code-link">${escapeHtml(shortMp4Url)}</div>
+    </div>
   </div>
 
-  <div class="footer">
-    <a href="/legacy${hostParamOnly}">&laquo; Danh sách kênh</a> |
-    <a href="/legacy/guide${queryParams}">Hướng dẫn CorePlayer</a> |
-    <a href="/?view=modern">Bản hiện đại</a>
+  <!-- NÚT QUAY LẠI DANH SÁCH -->
+  <div style="text-align:center;margin:8px 0;">
+    <a class="btn-mini" style="background:#1e293b;padding:5px 12px;font-size:11px;font-weight:bold;" href="/legacy?res=${effectiveRes}&player=${playerChoice}${hostParam}">
+      &laquo; QUAY LẠI DANH SÁCH KÊNH
+    </a>
+  </div>
+
+  <div class="bottom-footer">
+    <a href="/legacy${hostParam}">&laquo; Danh sách kênh</a> |
+    <a href="/legacy/guide?res=${effectiveRes}&player=${playerChoice}${hostParam}">Hướng dẫn E72</a>
   </div>
 </body>
 </html>`;
 }
 
 export function renderCorePlayerGuide(host: string = '', resChoice: string = '240p'): string {
-  const displayHost = host || '192.168.1.xxx:3000';
-  const sampleUrl = `http://${displayHost}/c/1?res=240p`;
+  const displayHost = host || (typeof process !== 'undefined' && process.env?.RENDER_EXTERNAL_HOSTNAME) || '192.168.1.xxx:3000';
+  const sampleCore = `http://${displayHost}/c/1.ts?res=240p`;
+  const sampleReal = `http://${displayHost}/c/1.mp4?res=240p`;
 
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>Hướng Dẫn Cấu Hình CorePlayer 1.36 Cho Nokia E72</title>
+  <title>Cẩm Nang IPTV Cho Nokia E72</title>
   <style type="text/css">
 ${LEGACY_CSS}
   </style>
 </head>
 <body>
-  <div class="detect-banner">
-    &#10003; CẨM NANG TOÀN TẬP: OPERA MINI &amp; COREPLAYER CHO NOKIA E72
+  <div class="top-header">
+    <div class="brand-title">📖 CẨM NANG IPTV NOKIA E72</div>
+    <div class="brand-sub">Kỹ Thuật Gọi Ứng Dụng CorePlayer &amp; RealPlayer Từ Web</div>
   </div>
 
-  <div class="header">
-    <h1>CẤU HÌNH COREPLAYER 1.36 / 3.36 CHO E72</h1>
-    <div style="font-size:11px;color:#cbd5e1;">Tối ưu giải mã H.264 mượt mà &bull; Không giật hình &bull; Không tràn RAM</div>
+  <!-- PHẦN 1: CƠ CHẾ GỌI ỨNG DỤNG TỰ ĐỘNG -->
+  <div class="block-panel" style="background:#0f2b48;border-color:#38bdf8;">
+    <strong style="color:#38bdf8;font-size:11px;">1. CƠ CHẾ GỌI ỨNG DỤNG TRỰC TIẾP TỪ TRÌNH DUYỆT:</strong>
+    <p style="font-size:10px;margin:3px 0;line-height:1.4;">
+      &bull; <b>Nút [ ▶ COREPLAYER ]:</b> Trả về file manifest <code>.m3u</code> với tiêu đề <code>Content-Disposition: inline</code> và MIME <code>audio/x-mpegurl</code>. Khi Opera Mini hoặc Nokia Browser nhận được, hệ thống Symbian S60 sẽ kích hoạt CorePlayer để mở luồng ngay!<br />
+      &bull; <b>Nút [ ▶ REALPLAYER ]:</b> Trả về file <code>.ram</code> với MIME <code>audio/x-pn-realaudio</code>. Symbian OS lập tức chuyển tiếp đến <code>RealPlayer.exe</code> tích hợp sẵn trong máy.
+    </p>
   </div>
 
-  <!-- PHẦN 1: CÁCH DÙNG OPERA MINI ĐỂ MỞ COREPLAYER -->
-  <div class="box" style="background:#0f2b48;border-color:#38bdf8;">
-    <strong style="color:#38bdf8;font-size:13px;">1. CÁCH XEM TRUYỀN HÌNH QUA TRÌNH DUYỆT OPERA MINI:</strong>
-    <div class="guide-step" style="margin-top:6px;">
-      <b>Bước 1:</b> Trong Opera Mini, vào danh sách kênh <code>/legacy</code>.<br />
-      <b>Bước 2:</b> Bấm vào nút màu xanh <b>[ ▶ Mở CorePlayer (Tải M3U) ]</b> của kênh bạn muốn xem.<br />
-      <b>Bước 3:</b> Trình duyệt Opera Mini sẽ hiện bảng hỏi: <em>"Tải về / Mở" ("Download / Open")</em>.<br />
-      <b>Bước 4:</b> Bấm chọn <b>"Mở" (Open)</b>.<br />
-      <b>Kết quả:</b> Symbian OS sẽ tự động kích hoạt ứng dụng <strong>CorePlayer</strong>, nạp luồng phát và hiển thị hình ảnh sau 1-2 giây!
+  <!-- PHẦN 2: CÁCH BẬT MỞ TỰ ĐỘNG TRONG OPERA MINI -->
+  <div class="block-panel" style="background:#052e16;border-color:#22c55e;">
+    <strong style="color:#4ade80;font-size:11px;">2. THIẾT LẬP MỞ 1-CHẠM TRÊN OPERA MINI:</strong>
+    <p style="font-size:10px;margin:3px 0;line-height:1.4;">
+      Trong Opera Mini &gt; <b>Cài đặt &gt; Nâng cao &gt; Tải xuống:</b><br />
+      &bull; Chọn <b>"Mở các tệp phương tiện tự động"</b>.<br />
+      &bull; Sau khi bật, chỉ cần bấm nút trên web là máy tự động phát kênh mà không cần nhấn xác nhận thêm!
+    </p>
+  </div>
+
+  <!-- PHẦN 3: TỐI ƯU CẤU HÌNH COREPLAYER CHO E72 -->
+  <div class="block-panel">
+    <strong style="color:#f59e0b;font-size:11px;">3. CẤU HÌNH COREPLAYER 1.36 (TRÁNH TRÀN 128MB RAM):</strong>
+    <div style="font-size:10px;margin-top:3px;line-height:1.4;">
+      Mở CorePlayer &gt; <b>Menu &gt; Tools &gt; Preferences:</b><br />
+      &bull; <b>Video Output:</b> Chọn <b>DirectDraw</b> (tối ưu phần cứng, giảm tải CPU ARM11 600MHz).<br />
+      &bull; <b>Buffer Size (Bộ đệm mạng):</b> Chọn <b>256 KB</b> đến <b>512 KB</b> (không đặt 1MB+ để tránh đầy RAM E72).<br />
+      &bull; <b>Pre-buffer:</b> Đặt <b>15% - 20%</b> để bắt đầu phát nhanh chóng.
     </div>
   </div>
 
-  <!-- PHẦN 2: CÁCH DÙNG LINK RÚT GỌN SIÊU TIỆN LỢI CHO PHÍM E72 -->
-  <div class="box" style="background:#052e16;border-color:#22c55e;">
-    <strong style="color:#4ade80;font-size:13px;">2. CÁCH MỞ KÊNH NHANH BẰNG LINK RÚT GỌN (/c/1, /c/2...):</strong>
-    <div class="guide-step" style="margin-top:6px;">
-      Bàn phím QWERTY của Nokia E72 rất nhỏ, gõ link dài rất mất thời gian. Hệ thống đã tạo sẵn đường link cực ngắn theo số thứ tự kênh:<br />
-      &bull; <b>Kênh 1 (VTV1):</b> <code>http://${displayHost}/c/1</code><br />
-      &bull; <b>Kênh 2 (VTV2):</b> <code>http://${displayHost}/c/2</code><br />
-      &bull; <b>Kênh 3 (VTV3):</b> <code>http://${displayHost}/c/3</code><br />
-      <i>Cách dùng:</i> Mở CorePlayer &gt; <b>Menu &gt; Open URL</b> &gt; Chỉ cần gõ <code>/c/1</code> hoặc lưu vào Bookmark của CorePlayer để chuyển kênh chỉ với 1 thao tác!
+  <!-- PHẦN 4: CẤU HÌNH REALPLAYER -->
+  <div class="block-panel">
+    <strong style="color:#f87171;font-size:11px;">4. CẤU HÌNH REALPLAYER GỐC CỦA SYMBIAN S60:</strong>
+    <div style="font-size:10px;margin-top:3px;line-height:1.4;">
+      Mở RealPlayer &gt; <b>Tùy chọn &gt; Cài đặt &gt; Truyền phát (Streaming):</b><br />
+      &bull; <b>Điểm truy cập mạng:</b> Chọn điểm Wi-Fi nhà bạn hoặc cấu hình 3G Viettel/Vinaphone.<br />
+      &bull; <b>Thời gian trực tuyến:</b> Đặt <b>Không giới hạn</b>.<br />
+      &bull; <b>Cổng proxy:</b> Tắt proxy (Không sử dụng).
     </div>
   </div>
 
-  <!-- PHẦN 3: THIẾT LẬP CẤU HÌNH TRONG COREPLAYER -->
-  <div class="box">
-    <strong style="color:#f59e0b;font-size:13px;">3. CẤU HÌNH CHUẨN TRONG COREPLAYER (ĐỂ KHÔNG BỊ ĐƠ MÁY):</strong>
-    <p style="font-size:11px;color:#94a3b8;margin:4px 0 8px 0;">Mở CorePlayer &gt; Chọn <b>Menu (phím chọn trái) &gt; Tools &gt; Preferences</b>:</p>
-
-    <div class="guide-step">
-      <strong style="color:#38bdf8;">A. Mục "Video" (Cực kỳ quan trọng):</strong><br />
-      &bull; <b>Video Output:</b> Chọn <b>DirectDraw</b> hoặc <b>RAW FrameBuffer</b>.<br />
-      <em>(Giúp giải mã bỏ qua lớp đồ họa GDI của Symbian, giảm tải CPU ARM11 từ 95% xuống 40%, hình ảnh đạt 60fps mượt mà).</em><br />
-      &bull; <b>Zoom:</b> Chọn <b>Best Fit</b> (giữ đúng tỉ lệ) hoặc <b>Fit to Screen</b> (toàn màn hình 320x240).
-    </div>
-
-    <div class="guide-step" style="margin-top:8px;">
-      <strong style="color:#38bdf8;">B. Mục "Network" (Bộ đệm luồng):</strong><br />
-      &bull; <b>Buffer Size:</b> Đặt <b>256 KB</b> đến <b>512 KB</b>.<br />
-      <em>(Lưu ý: Không đặt quá 1MB vì RAM E72 chỉ có 128MB, đặt quá lớn sẽ gây tràn RAM).</em><br />
-      &bull; <b>Pre-buffer:</b> Đặt <b>15% - 20%</b> để luồng tải nhanh chỉ sau 1-2 giây.
-    </div>
-
-    <div class="guide-step" style="margin-top:8px;">
-      <strong style="color:#38bdf8;">C. Mục "Audio":</strong><br />
-      &bull; <b>Audio Output:</b> Chọn <b>Symbian Sound</b>.<br />
-      &bull; <b>Equalizer:</b> Tắt (Off) hoặc Flat để tiết kiệm chu kỳ xử lý của chip.
+  <!-- PHẦN 5: LINK MẪU GÕ TAY -->
+  <div class="block-panel">
+    <strong style="color:#cbd5e1;font-size:11px;">5. LINK MẪU NHẬP VÀO MENU OPEN URL:</strong>
+    <div style="font-size:9px;margin:3px 0;">
+      CorePlayer: <div class="code-link">${escapeHtml(sampleCore)}</div>
+      RealPlayer: <div class="code-link">${escapeHtml(sampleReal)}</div>
     </div>
   </div>
 
-  <!-- PHẦN 4: KHẮC PHỤC CÁC LỖI THƯỜNG GẶP -->
-  <div class="box" style="background:#261818;border-color:#ef4444;">
-    <strong style="color:#f87171;font-size:13px;">4. KHẮC PHỤC LỖI THƯỜNG GẶP TRÊN E72:</strong>
-    <div class="guide-step" style="margin-top:6px;">
-      &bull; <strong>Lỗi "HTTPS hỗ trợ các thỏa thuận không được":</strong><br />
-      Do CorePlayer chỉ hỗ trợ <code>http://</code> thuần. Luôn dùng đường link HTTP do server cung cấp, không dùng link <code>https://</code>.<br /><br />
-      &bull; <strong>Lỗi "Hết bộ nhớ / Out of memory":</strong><br />
-      Vào danh sách kênh và chọn mức độ phân giải <b>⚡ 180p Siêu nhẹ</b> hoặc <b>📺 240p QVGA</b>.<br /><br />
-      &bull; <strong>Lỗi hình ảnh bị giật / tiếng đi trước hình:</strong><br />
-      Chỉnh lại Video Output thành <b>DirectDraw</b> trong CorePlayer Preferences.
-    </div>
-  </div>
-
-  <!-- PHẦN 5: THỬ NGHIỆM LINK MẪU -->
-  <div class="box">
-    <strong style="color:#4ade80;font-size:13px;">5. LINK THỬ NGHIỆM TRỰC TIẾP:</strong>
-    <p style="font-size:11px;color:#94a3b8;margin:2px 0 4px 0;">Copy link dưới dán vào CorePlayer &gt; Open URL:</p>
-    <div class="url-box">${escapeHtml(sampleUrl)}</div>
-  </div>
-
-  <div style="text-align:center;margin:12px 0;">
-    <a class="btn" style="background:#0284c7;color:#fff;border:1px solid #38bdf8;padding:8px 14px;font-size:13px;" href="/legacy${host ? `?host=${encodeURIComponent(host)}` : ''}">
+  <div style="text-align:center;margin:8px 0;">
+    <a class="btn-mini" style="background:#0284c7;color:#fff !important;padding:5px 12px;font-size:11px;font-weight:bold;" href="/legacy${host ? `?host=${encodeURIComponent(host)}` : ''}">
       &laquo; QUAY LẠI DANH SÁCH KÊNH
     </a>
   </div>
 
-  <div class="footer">
+  <div class="bottom-footer">
     <a href="/legacy${host ? `?host=${encodeURIComponent(host)}` : ''}">Danh sách kênh</a> |
-    <a href="/api/channels/e72.m3u${host ? `?host=${encodeURIComponent(host)}` : ''}">Tải M3U E72</a> |
-    <a href="/api/channels/e72.pls${host ? `?host=${encodeURIComponent(host)}` : ''}">Tải PLS E72</a> |
-    <a href="/?view=modern">Bản hiện đại</a>
+    <a href="/api/channels/coreplayer.m3u${host ? `?host=${encodeURIComponent(host)}` : ''}&dl=1">Tải M3U CorePlayer</a> |
+    <a href="/realplayer.ram${host ? `?host=${encodeURIComponent(host)}` : ''}&dl=1">Tải RAM RealPlayer</a>
   </div>
 </body>
 </html>`;
@@ -775,23 +877,22 @@ export function renderLegacyNotFound(): string {
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>404 - Không tìm thấy trang</title>
+  <title>404 - Không tìm thấy kênh</title>
   <style type="text/css">
 ${LEGACY_CSS}
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>KHÔNG TÌM THẤY TRANG</h1>
+  <div class="top-header">
+    <div class="brand-title">KHÔNG TÌM THẤY KÊNH</div>
   </div>
-  <div class="box" style="text-align:center;padding:16px;">
-    <p>Kênh hoặc đường dẫn bạn truy cập không tồn tại hoặc đã thay đổi.</p>
-    <a class="btn" href="/legacy">&#171; QUAY VỀ TRANG CHỦ</a>
+  <div class="block-panel" style="text-align:center;padding:14px;">
+    <p>Kênh hoặc đường dẫn bạn yêu cầu không tồn tại hoặc đã được cập nhật.</p>
+    <a class="btn-mini" style="background:#0284c7;color:#fff !important;padding:4px 8px;font-weight:bold;" href="/legacy">&#171; QUAY VỀ TRANG CHỦ</a>
   </div>
-  <div class="footer">
+  <div class="bottom-footer">
     <a href="/legacy">MY IPTV S60</a>
   </div>
 </body>
 </html>`;
 }
-

@@ -160,7 +160,8 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
   // If an https:// URL is loaded, CorePlayer throws: "HTTPS hỗ trợ các thỏa thuận không được".
   // Therefore, ALL stream endpoints for CorePlayer must use plain HTTP ('http://').
   const customHost = (req.query.host as string) || (req.query.ip as string) || '';
-  const host = customHost || req.get('host') || '127.0.0.1:3000';
+  const forwardedHost = (req.headers['x-forwarded-host'] as string)?.split(',')[0].trim();
+  const host = customHost || forwardedHost || req.get('host') || process.env.RENDER_EXTERNAL_HOSTNAME || '127.0.0.1:3000';
   const proto = 'http'; // CorePlayer requires plain HTTP without SSL/TLS
   const selectedRes = ((req.query.res as string) || '240p').toLowerCase();
 
@@ -256,12 +257,14 @@ router.get('/open/:channelId', async (req: Request, res: Response) => {
       </form>
     </div>
 
-    <!-- Nút phát cho E72 và CorePlayer -->
-    <a class="btn btn-e72" href="${escapeHtml(e72TsUrl)}">&#9654; XEM TRÊN NOKIA E72 (${escapeHtml(selectedRes.toUpperCase())} - ${selectedRes === '180p' ? 'SIÊU NHẸ' : selectedRes === '360p' ? 'NÉT HƠN' : 'MƯỢT NHẸ'})</a>
-    <a class="btn btn-green" href="${escapeHtml(targetCorePlayerM3u)}">&#128190; TẢI FILE .M3U CHO COREPLAYER (${escapeHtml(selectedRes.toUpperCase())} CHUẨN HTTP)</a>
+    <!-- Nút kích hoạt ứng dụng trực tiếp trên Nokia E72 -->
+    <a class="btn btn-green" href="/play/coreplayer/${encodeURIComponent(channel.id)}?res=${escapeHtml(selectedRes)}${hostQueryParam}">&#9654; MỞ TRỰC TIẾP BẰNG COREPLAYER</a>
+    <a class="btn" style="background-color:#b91c1c;color:#fff !important;border:1px solid #ef4444;" href="/play/realplayer/${encodeURIComponent(channel.id)}?res=${escapeHtml(selectedRes)}${hostQueryParam}">&#9654; MỞ TRỰC TIẾP BẰNG REALPLAYER</a>
+    <a class="btn btn-e72" href="${escapeHtml(e72TsUrl)}">&#128246; PHÁT LUỒNG TRỰC TIẾP (${escapeHtml(selectedRes.toUpperCase())})</a>
+    <a class="btn btn-gray" href="${escapeHtml(targetCorePlayerM3u)}&amp;dl=1">&#128190; TẢI FILE .M3U LƯU VÀO THẺ NHỚ</a>
 
     <!-- Nút cho smartphone -->
-    <a class="btn btn-vlc" href="${escapeHtml(vlcLaunchUrl)}">&#9654; XEM TRÊN VLC PLAYER (CHO ANDROID / IPHONE)</a>
+    <a class="btn btn-vlc" href="${escapeHtml(vlcLaunchUrl)}">&#9654; XEM TRÊN VLC PLAYER (SMARTPHONE)</a>
 
     <div class="notice-box">
       <div class="notice-title">&#128225; HƯỚNG DẪN XEM TRÊN NOKIA E72:</div>

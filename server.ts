@@ -20,6 +20,9 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const isProd = process.env.NODE_ENV === 'production';
 
+// Trust Render's reverse proxy for correct proto, host and IP detection
+app.set('trust proxy', 1);
+
 // Helper to parse cookie string
 function parseCookies(cookieHeader: string = ''): Record<string, string> {
   const list: Record<string, string> = {};
@@ -101,8 +104,11 @@ app.get(['/api/tools/e72-relay.py', '/e72-relay.py'], (req: Request, res: Respon
   const scriptPath = path.resolve(__dirname, 'e72-relay.py');
   if (fs.existsSync(scriptPath)) {
     let content = fs.readFileSync(scriptPath, 'utf-8');
-    const targetUrl = 'https://my-iptv-uguq.onrender.com';
-    content = content.replace(/DEFAULT_TARGET\s*=\s*"[^"]*"/, `DEFAULT_TARGET = "${targetUrl}"`);
+    // Dynamically inject the deployment's live URL (Render, custom domain, or local host)
+    const host = (req.headers['x-forwarded-host'] as string)?.split(',')[0].trim() || req.get('host') || process.env.RENDER_EXTERNAL_HOSTNAME || '127.0.0.1:3000';
+    const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0].trim() || (req.secure ? 'https' : (process.env.RENDER ? 'https' : 'http'));
+    const targetUrl = process.env.RENDER_EXTERNAL_URL || `${proto}://${host}`;
+    content = content.replace(/DEFAULT_TARGET\s*=\s*[^\r\n]+/, `DEFAULT_TARGET = "${targetUrl}"`);
 
     res.setHeader('Content-Type', 'text/x-python; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="e72-relay.py"');
@@ -116,8 +122,11 @@ app.get(['/api/tools/e72-relay.js', '/e72-relay.js'], (req: Request, res: Respon
   const scriptPath = path.resolve(__dirname, 'e72-relay.js');
   if (fs.existsSync(scriptPath)) {
     let content = fs.readFileSync(scriptPath, 'utf-8');
-    const targetUrl = 'https://my-iptv-uguq.onrender.com';
-    content = content.replace(/DEFAULT_TARGET\s*=\s*'[^']*'/, `DEFAULT_TARGET = '${targetUrl}'`);
+    // Dynamically inject the deployment's live URL (Render, custom domain, or local host)
+    const host = (req.headers['x-forwarded-host'] as string)?.split(',')[0].trim() || req.get('host') || process.env.RENDER_EXTERNAL_HOSTNAME || '127.0.0.1:3000';
+    const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0].trim() || (req.secure ? 'https' : (process.env.RENDER ? 'https' : 'http'));
+    const targetUrl = process.env.RENDER_EXTERNAL_URL || `${proto}://${host}`;
+    content = content.replace(/const DEFAULT_TARGET\s*=\s*[^;\r\n]+;/, `const DEFAULT_TARGET = '${targetUrl}';`);
 
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="e72-relay.js"');
@@ -165,8 +174,11 @@ async function handleLegacyHome(req: Request, res: Response) {
 
   const groups = await getAllGroups();
 
-  const host = (req.query.host as string) || (req.query.ip as string) || (req as any).e72Host || '';
+  const customHost = (req.query.host as string) || (req.query.ip as string) || (req as any).e72Host || '';
+  const forwardedHost = (req.headers['x-forwarded-host'] as string)?.split(',')[0].trim();
+  const host = customHost || forwardedHost || req.get('host') || process.env.RENDER_EXTERNAL_HOSTNAME || '';
   const resChoice = ((req.query.res as string) || '240p').toLowerCase();
+  const playerChoice = (((req.query.player as string) || (req.query.app as string) || 'all').toLowerCase()) as 'all' | 'coreplayer' | 'realplayer';
   const deviceInfo = (req as any).deviceInfo;
   const isOperaMini = Boolean(
     deviceInfo?.isOperaMini ||
@@ -186,6 +198,7 @@ async function handleLegacyHome(req: Request, res: Response) {
     host,
     resChoice,
     isOperaMini,
+    playerChoice,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -199,15 +212,20 @@ async function handleLegacyChannel(req: Request, res: Response) {
     return res.send(renderLegacyNotFound());
   }
 
-  const host = (req.query.host as string) || (req.query.ip as string) || (req as any).e72Host || '';
+  const customHost = (req.query.host as string) || (req.query.ip as string) || (req as any).e72Host || '';
+  const forwardedHost = (req.headers['x-forwarded-host'] as string)?.split(',')[0].trim();
+  const host = customHost || forwardedHost || req.get('host') || process.env.RENDER_EXTERNAL_HOSTNAME || '';
   const resChoice = ((req.query.res as string) || '240p').toLowerCase();
-  const html = renderLegacyChannel(channel, host, resChoice);
+  const playerChoice = (((req.query.player as string) || (req.query.app as string) || 'all').toLowerCase()) as 'all' | 'coreplayer' | 'realplayer';
+  const html = renderLegacyChannel(channel, host, resChoice, playerChoice);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
 }
 
 function handleCorePlayerGuide(req: Request, res: Response) {
-  const host = (req.query.host as string) || (req.query.ip as string) || (req as any).e72Host || '';
+  const customHost = (req.query.host as string) || (req.query.ip as string) || (req as any).e72Host || '';
+  const forwardedHost = (req.headers['x-forwarded-host'] as string)?.split(',')[0].trim();
+  const host = customHost || forwardedHost || req.get('host') || process.env.RENDER_EXTERNAL_HOSTNAME || '';
   const resChoice = ((req.query.res as string) || '240p').toLowerCase();
   const html = renderCorePlayerGuide(host, resChoice);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -223,7 +241,7 @@ app.get(['/legacy', '/operamini', '/e72'], (req, res) => {
   handleLegacyHome(req, res).catch(() => res.status(500).send('Lỗi máy chủ'));
 });
 
-app.get('/legacy/channel/:id', (req, res) => {
+app.get(['/legacy/channel/:id', '/e72/channel/:id', '/operamini/channel/:id'], (req, res) => {
   handleLegacyChannel(req, res).catch(() => res.status(500).send('Lỗi máy chủ'));
 });
 

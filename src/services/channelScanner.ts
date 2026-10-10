@@ -1,5 +1,5 @@
 import { Channel, StreamTestResult } from '../types/iptv.js';
-import { getAllChannelsAdmin, updateChannel } from '../db/storage.js';
+import { getAllChannelsAdmin, updateChannel, saveFileState } from '../db/storage.js';
 
 export interface ScanItemResult {
   channelId: string;
@@ -22,6 +22,7 @@ export interface BatchScanProgress {
   currentChannelName?: string;
   startedAt?: string;
   finishedAt?: string;
+  scopeDescription?: string;
   recentResults: ScanItemResult[];
 }
 
@@ -43,7 +44,7 @@ let activeScan: {
 /**
  * Thăm dò chuyên sâu tính khả dụng của một luồng stream IPTV (HLS / MPEG-TS / HTTP)
  * Kiểm tra 2 giai đoạn:
- * 1. HTTP Status & Network Latency (HEAD / GET Range)
+ * 1. HTTP Status & Network Latency (HEAD / GET Range với timeout 2.8s cực nhanh)
  * 2. HLS Playlist Validation (Phát hiện trang lỗi 404/Cloudflare giả dạng HTTP 200)
  */
 export async function probeChannelStream(streamUrl: string): Promise<{
@@ -65,7 +66,7 @@ export async function probeChannelStream(streamUrl: string): Promise<{
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4500); // 4.5s probe timeout
+    const timeout = setTimeout(() => controller.abort(), 2800); // 2.8s timeout siêu nhanh
 
     let res: Response;
     let bodyText = '';
@@ -99,7 +100,7 @@ export async function probeChannelStream(streamUrl: string): Promise<{
         // Thử lại với HEAD nếu GET bị lỗi
         try {
           const headController = new AbortController();
-          const headTimeout = setTimeout(() => headController.abort(), 3500);
+          const headTimeout = setTimeout(() => headController.abort(), 2200);
           res = await fetch(streamUrl, {
             method: 'HEAD',
             headers: { 'User-Agent': headers['User-Agent'] },
@@ -114,7 +115,7 @@ export async function probeChannelStream(streamUrl: string): Promise<{
             responseTimeMs: responseTime,
             error:
               headErr.name === 'AbortError'
-                ? 'Hết thời gian kết nối (>4.5s)'
+                ? 'Hết thời gian kết nối (>2.8s)'
                 : headErr.message || 'Không thể kết nối đến máy chủ stream',
           };
         }
@@ -170,7 +171,7 @@ export async function probeChannelStream(streamUrl: string): Promise<{
     return {
       status: 'offline',
       responseTimeMs: Date.now() - startTime,
-      error: err.name === 'AbortError' ? 'Hết thời gian kết nối (>4.5s)' : err.message || 'Lỗi mạng không xác định',
+      error: err.name === 'AbortError' ? 'Hết thời gian kết nối (>2.8s)' : err.message || 'Lỗi mạng không xác định',
     };
   }
 }
@@ -204,23 +205,42 @@ export async function scanSingleChannel(channel: Channel): Promise<ScanItemResul
 }
 
 /**
- * Chạy quét toàn bộ kênh theo cơ chế Worker Pool (Concurrency Queue)
- * Giới hạn đồng thời (mặc định 6 kênh) để tránh nghẽn CPU và không bị ISP chặn IP
+ * Chạy quét kênh theo cơ chế Worker Pool đa luồng
+ * Hỗ trợ quét theo danh sách ID (trang hiện tại), theo nhóm, hoặc toàn bộ hệ thống
  */
-export async function startBatchScan(concurrency: number = 6): Promise<void> {
+export async function startBatchScan(options?: {
+  concurrency?: number;
+  channelIds?: string[];
+  group?: string;
+  scopeDescription?: string;
+}): Promise<void> {
   if (activeScan.progress.isRunning) {
-    return; // Đang chạy quét tiến trình trước đó
+    return; // Đang có tiến trình quét đang chạy
   }
 
+  const concurrency = options?.concurrency || 15;
   const allChannels = await getAllChannelsAdmin();
+
+  let targetChannels: Channel[] = allChannels;
+
+  if (options?.channelIds && options.channelIds.length > 0) {
+    const idSet = new Set(options.channelIds);
+    targetChannels = allChannels.filter((c) => idSet.has(c.id));
+  } else if (options?.group && options.group !== 'all') {
+    targetChannels = allChannels.filter(
+      (c) => c.group.toLowerCase() === options.group!.toLowerCase()
+    );
+  }
+
   activeScan.isCancelled = false;
   activeScan.progress = {
     isRunning: true,
-    total: allChannels.length,
+    total: targetChannels.length,
     scanned: 0,
     onlineCount: 0,
     offlineCount: 0,
     currentChannelName: '',
+    scopeDescription: options?.scopeDescription || `Quét ${targetChannels.length} kênh`,
     startedAt: new Date().toISOString(),
     recentResults: [],
   };
@@ -230,9 +250,9 @@ export async function startBatchScan(concurrency: number = 6): Promise<void> {
     let index = 0;
 
     async function worker() {
-      while (index < allChannels.length && !activeScan.isCancelled) {
+      while (index < targetChannels.length && !activeScan.isCancelled) {
         const currentIndex = index++;
-        const channel = allChannels[currentIndex];
+        const channel = targetChannels[currentIndex];
         if (!channel) continue;
 
         activeScan.progress.currentChannelName = channel.name;
@@ -252,15 +272,18 @@ export async function startBatchScan(concurrency: number = 6): Promise<void> {
           if (activeScan.progress.recentResults.length > 50) {
             activeScan.progress.recentResults.pop();
           }
-        } catch (err) {
+        } catch {
           activeScan.progress.scanned++;
           activeScan.progress.offlineCount++;
         }
       }
     }
 
-    const workers = Array.from({ length: concurrency }, () => worker());
+    const workers = Array.from({ length: Math.min(concurrency, targetChannels.length || 1) }, () => worker());
     await Promise.all(workers);
+
+    // Lưu ngay lập tức xuống đĩa khi hoàn tất
+    saveFileState(true);
 
     activeScan.progress.isRunning = false;
     activeScan.progress.finishedAt = new Date().toISOString();

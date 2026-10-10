@@ -21,7 +21,13 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Activity,
+  AlertTriangle,
+  AlertCircle,
+  CheckCircle,
+  Sliders,
+  X
 } from 'lucide-react';
 
 const STORAGE_FAVORITES_KEY = 'my_iptv_favorites_v1';
@@ -47,15 +53,34 @@ export default function App() {
   const [pageSize, setPageSize] = useState<number>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_PAGE_SIZE_KEY);
-      if (saved === '100') return 100;
-      if (saved === '50') return 50;
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if ([24, 48, 50, 96, 100].includes(parsed)) return parsed;
+      }
     }
-    return 50; // Default fixed 50 channels per page
+    return 24; // Default fast 24 channels per page
   });
   const [jumpInput, setJumpInput] = useState<string>('');
 
   const pageSizeRef = useRef<number>(pageSize);
   pageSizeRef.current = pageSize;
+
+  // Status filter & availability counts
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'offline'>('all');
+  const [onlineCount, setOnlineCount] = useState<number>(0);
+  const [offlineCount, setOfflineCount] = useState<number>(0);
+
+  // Background Batch Channel Scanner state
+  const [scanProgress, setScanProgress] = useState<{
+    isRunning: boolean;
+    total: number;
+    scanned: number;
+    onlineCount: number;
+    offlineCount: number;
+    currentChannelName?: string;
+  } | null>(null);
+  const [isStartingScan, setIsStartingScan] = useState<boolean>(false);
+  const [scanningChannelId, setScanningChannelId] = useState<string | null>(null);
 
   // Global Categories & System stats from server
   const [categories, setCategories] = useState<string[]>([]);
@@ -121,7 +146,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Fetch device info & global categories list
+  // Fetch device info & global categories list with online/offline stats
   const fetchMetadata = useCallback(async () => {
     try {
       const [groupsRes, deviceRes] = await Promise.all([
@@ -136,6 +161,8 @@ export default function App() {
           setCategories(gData.groups || []);
           setGroupCounts(gData.counts || {});
           setTotalSystemChannels(gData.totalChannels || 0);
+          setOnlineCount(gData.onlineChannels ?? gData.totalChannels ?? 0);
+          setOfflineCount(gData.offlineChannels ?? 0);
         }
       }
 
@@ -155,9 +182,27 @@ export default function App() {
     fetchMetadata();
   }, [fetchMetadata]);
 
-  // Server-Side Channels Fetcher with Pagination & Filtering
+  // Check initial batch scan status
+  useEffect(() => {
+    fetch('/api/channels/scan-status')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && (d.isRunning || d.scanned > 0)) {
+          setScanProgress(d);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Server-Side Channels Fetcher with Pagination, Filtering & Status
   const loadChannels = useCallback(
-    async (group: string, query: string, page: number = 1, currentLimit: number = pageSizeRef.current) => {
+    async (
+      group: string,
+      query: string,
+      page: number = 1,
+      currentLimit: number = pageSizeRef.current,
+      currentStatus: 'all' | 'active' | 'offline' = statusFilter
+    ) => {
       setLoading(true);
 
       try {
@@ -169,6 +214,12 @@ export default function App() {
             const allItems: Channel[] = data.channels || [];
             const targetIds = group === 'favorites' ? favoritesRef.current : recentIdsRef.current;
             let filtered = allItems.filter((c) => targetIds.includes(c.id));
+
+            if (currentStatus === 'active') {
+              filtered = filtered.filter((c) => c.status !== 'offline');
+            } else if (currentStatus === 'offline') {
+              filtered = filtered.filter((c) => c.status === 'offline');
+            }
 
             if (query.trim()) {
               const qLower = query.toLowerCase().trim();
@@ -190,6 +241,8 @@ export default function App() {
             setTotalMatching(total);
             setCurrentPage(validPage);
             setTotalPages(computedPages);
+            if (data.onlineCount !== undefined) setOnlineCount(data.onlineCount);
+            if (data.offlineCount !== undefined) setOfflineCount(data.offlineCount);
 
             setSelectedChannel((prev) => prev ? prev : (paginated.length > 0 ? paginated[0] : null));
           }
@@ -206,6 +259,9 @@ export default function App() {
         if (query.trim()) {
           params.set('q', query.trim());
         }
+        if (currentStatus !== 'all') {
+          params.set('status', currentStatus);
+        }
 
         const res = await fetch(`/api/channels?${params.toString()}`);
         if (res.ok) {
@@ -216,6 +272,8 @@ export default function App() {
           setTotalMatching(data.total || 0);
           setCurrentPage(data.page || 1);
           setTotalPages(data.totalPages || 1);
+          if (data.onlineCount !== undefined) setOnlineCount(data.onlineCount);
+          if (data.offlineCount !== undefined) setOfflineCount(data.offlineCount);
 
           setSelectedChannel((prev) => prev ? prev : (newChannels.length > 0 ? newChannels[0] : null));
         }
@@ -225,13 +283,111 @@ export default function App() {
         setLoading(false);
       }
     },
-    []
+    [statusFilter]
   );
 
-  // Trigger load when group or debounced query changes
+  // Trigger load when group, statusFilter, or debounced query changes
   useEffect(() => {
-    loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current);
-  }, [activeGroup, debouncedQuery, loadChannels]);
+    loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current, statusFilter);
+  }, [activeGroup, debouncedQuery, statusFilter, loadChannels]);
+
+  // Poll batch scanner progress if running
+  useEffect(() => {
+    let timer: any;
+    if (scanProgress?.isRunning) {
+      timer = setInterval(async () => {
+        try {
+          const res = await fetch('/api/channels/scan-status');
+          if (res.ok) {
+            const data = await res.json();
+            setScanProgress(data);
+            if (!data.isRunning) {
+              clearInterval(timer);
+              fetchMetadata();
+              loadChannels(activeGroup, debouncedQuery, currentPage, pageSizeRef.current, statusFilter);
+            }
+          }
+        } catch {}
+      }, 1200);
+    }
+    return () => clearInterval(timer);
+  }, [scanProgress?.isRunning, fetchMetadata, loadChannels, activeGroup, debouncedQuery, currentPage, statusFilter]);
+
+  // Batch scan actions
+  const handleStartBatchScan = async () => {
+    if (scanProgress?.isRunning || isStartingScan) return;
+    setIsStartingScan(true);
+    try {
+      const res = await fetch('/api/channels/scan-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ concurrency: 6 }),
+      });
+      const data = await res.json();
+      if (data.progress) {
+        setScanProgress(data.progress);
+      }
+    } catch (e) {
+      console.error('Lỗi khởi động quét:', e);
+    } finally {
+      setIsStartingScan(false);
+    }
+  };
+
+  const handleStopBatchScan = async () => {
+    try {
+      const res = await fetch('/api/channels/scan-stop', { method: 'POST' });
+      const data = await res.json();
+      if (data.progress) setScanProgress(data.progress);
+    } catch (e) {
+      console.error('Lỗi dừng quét:', e);
+    }
+  };
+
+  const handleScanSingleChannel = async (channelId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (scanningChannelId) return;
+    setScanningChannelId(channelId);
+    try {
+      const res = await fetch(`/api/channels/${encodeURIComponent(channelId)}/scan`, { method: 'POST' });
+      if (res.ok) {
+        const result = await res.json();
+        // Update local channel item state immediately
+        setChannels((prev) =>
+          prev.map((c) =>
+            c.id === channelId
+              ? {
+                  ...c,
+                  status: result.status === 'online' ? 'active' : 'offline',
+                  description:
+                    result.status === 'online'
+                      ? `Khả dụng (Ping ${result.responseTimeMs}ms, ${new Date().toLocaleDateString('vi-VN')})`
+                      : `Không khả dụng: ${result.error || 'Lỗi kết nối'} (${new Date().toLocaleDateString('vi-VN')})`,
+                }
+              : c
+          )
+        );
+        fetchMetadata();
+      }
+    } catch (err) {
+      console.error('Lỗi quét kênh đơn lẻ:', err);
+    } finally {
+      setScanningChannelId(null);
+    }
+  };
+
+  const handleResetAllStatus = async () => {
+    if (!window.confirm('Khôi phục tất cả các kênh về trạng thái Khả Dụng (Active)?')) return;
+    try {
+      const res = await fetch('/api/channels/reset-status', { method: 'POST' });
+      if (res.ok) {
+        fetchMetadata();
+        loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current, 'all');
+      }
+    } catch (err) {
+      console.error('Lỗi khôi phục trạng thái:', err);
+    }
+  };
 
   // Change page size (fixed 50 or 100 channels per page)
   const handleChangePageSize = (newSize: number) => {
@@ -629,6 +785,127 @@ export default function App() {
               recentCount={recentIds.length}
             />
 
+            {/* Channel Availability & Status Filter Toolbar */}
+            <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-3 flex flex-col gap-2.5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                {/* Status Filter Tabs */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] text-neutral-400 font-semibold mr-1">Trạng thái:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter('all');
+                      loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current, 'all');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                      statusFilter === 'all'
+                        ? 'bg-amber-500 text-neutral-950 font-bold shadow'
+                        : 'bg-neutral-950 hover:bg-neutral-800 text-neutral-300 border border-neutral-800'
+                    }`}
+                  >
+                    Tất cả ({totalSystemChannels})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter('active');
+                      loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current, 'active');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                      statusFilter === 'active'
+                        ? 'bg-emerald-600 text-white font-bold shadow'
+                        : 'bg-neutral-950 hover:bg-neutral-800 text-emerald-400 border border-emerald-950'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span>🟢 Khả dụng ({onlineCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter('offline');
+                      loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current, 'offline');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                      statusFilter === 'offline'
+                        ? 'bg-rose-600 text-white font-bold shadow'
+                        : 'bg-neutral-950 hover:bg-neutral-800 text-rose-400 border border-rose-950'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                    <span>🔴 Không khả dụng ({offlineCount})</span>
+                  </button>
+                </div>
+
+                {/* Scan Action Buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleStartBatchScan}
+                    disabled={scanProgress?.isRunning || isStartingScan}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 transition shadow"
+                    title="Tự động kiểm tra từng luồng và đánh dấu offline các kênh hỏng"
+                  >
+                    <Activity className={`w-3.5 h-3.5 ${scanProgress?.isRunning ? 'animate-spin' : ''}`} />
+                    <span>{scanProgress?.isRunning ? 'Đang Rà Soát...' : '⚡ Quét Tính Khả Dụng'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetAllStatus}
+                    className="p-1.5 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded-lg border border-neutral-800 transition"
+                    title="Khôi phục toàn bộ kênh về trạng thái Khả Dụng"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Batch Scan Progress Banner */}
+              {scanProgress && (scanProgress.isRunning || scanProgress.scanned > 0) && (
+                <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-lg space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${scanProgress.isRunning ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
+                      <span className="font-semibold text-white">
+                        {scanProgress.isRunning ? 'Đang quét rà soát luồng:' : 'Hoàn thành đợt rà soát:'}
+                      </span>
+                      <span className="text-neutral-400 font-mono">
+                        {scanProgress.scanned} / {scanProgress.total} kênh ({Math.round((scanProgress.scanned / (scanProgress.total || 1)) * 100)}%)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="text-emerald-400 font-medium">🟢 {scanProgress.onlineCount} Online</span>
+                      <span className="text-rose-400 font-medium">🔴 {scanProgress.offlineCount} Offline</span>
+                      {scanProgress.isRunning && (
+                        <button
+                          type="button"
+                          onClick={handleStopBatchScan}
+                          className="px-2 py-0.5 bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-[10px] font-bold transition"
+                        >
+                          Dừng
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="w-full bg-neutral-900 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-emerald-500 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.round((scanProgress.scanned / (scanProgress.total || 1)) * 100)}%` }}
+                    />
+                  </div>
+
+                  {scanProgress.isRunning && scanProgress.currentChannelName && (
+                    <p className="text-[10px] text-neutral-400 truncate">
+                      Đang kiểm tra: <span className="text-amber-300 font-medium">{scanProgress.currentChannelName}</span>
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Active Filter & Page Size Header */}
             <div className="flex flex-wrap items-center justify-between text-xs px-1 text-neutral-400 gap-2">
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -640,6 +917,13 @@ export default function App() {
                   ) : (
                     <span>Tất cả kênh</span>
                   )}
+                  {statusFilter !== 'all' && (
+                    <>
+                      {' '}&bull; Trạng thái: <strong className={statusFilter === 'active' ? 'text-emerald-400' : 'text-rose-400'}>
+                        {statusFilter === 'active' ? 'Khả dụng' : 'Không khả dụng'}
+                      </strong>
+                    </>
+                  )}
                   {debouncedQuery && (
                     <>
                       {' '}&bull; Từ khóa: <strong className="text-white">"{debouncedQuery}"</strong>
@@ -648,11 +932,13 @@ export default function App() {
                   {' '}&bull; Tìm thấy: <strong className="text-emerald-400">{totalMatching.toLocaleString()} kênh</strong>
                 </span>
 
-                {(activeGroup !== 'all' || debouncedQuery) && (
+                {(activeGroup !== 'all' || debouncedQuery || statusFilter !== 'all') && (
                   <button
                     onClick={() => {
                       setActiveGroup('all');
                       setSearchQuery('');
+                      setStatusFilter('all');
+                      loadChannels('all', '', 1, pageSizeRef.current, 'all');
                     }}
                     className="text-[11px] text-rose-400 hover:underline ml-1"
                   >
@@ -661,33 +947,46 @@ export default function App() {
                 )}
               </div>
 
-              {/* Page Size Setting (50 or 100 channels fixed per page) */}
+              {/* Page Size Setting (24, 48, 96 channels fixed per page) */}
               <div className="flex items-center gap-1.5 text-[11px] bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1 shadow-sm">
                 <span className="text-neutral-500">Mỗi trang:</span>
                 <button
                   type="button"
-                  onClick={() => handleChangePageSize(50)}
+                  onClick={() => handleChangePageSize(24)}
                   className={`px-1.5 py-0.5 rounded text-[11px] font-semibold transition ${
-                    pageSize === 50
+                    pageSize === 24
                       ? 'bg-amber-500 text-neutral-950 shadow-sm'
                       : 'text-neutral-400 hover:text-white'
                   }`}
-                  title="Hiển thị cố định 50 kênh mỗi trang"
+                  title="Hiển thị 24 kênh mỗi trang (Tải nhanh nhất)"
                 >
-                  50 kênh
+                  24 kênh
                 </button>
                 <span className="text-neutral-700">|</span>
                 <button
                   type="button"
-                  onClick={() => handleChangePageSize(100)}
+                  onClick={() => handleChangePageSize(48)}
                   className={`px-1.5 py-0.5 rounded text-[11px] font-semibold transition ${
-                    pageSize === 100
+                    pageSize === 48
                       ? 'bg-amber-500 text-neutral-950 shadow-sm'
                       : 'text-neutral-400 hover:text-white'
                   }`}
-                  title="Hiển thị cố định 100 kênh mỗi trang"
+                  title="Hiển thị 48 kênh mỗi trang"
                 >
-                  100 kênh
+                  48 kênh
+                </button>
+                <span className="text-neutral-700">|</span>
+                <button
+                  type="button"
+                  onClick={() => handleChangePageSize(96)}
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-semibold transition ${
+                    pageSize === 96
+                      ? 'bg-amber-500 text-neutral-950 shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                  title="Hiển thị 96 kênh mỗi trang"
+                >
+                  96 kênh
                 </button>
               </div>
             </div>
@@ -709,11 +1008,13 @@ export default function App() {
                 <div className="text-center py-12 bg-neutral-900/40 rounded-xl border border-neutral-800 p-6">
                   <Tv className="w-8 h-8 text-neutral-600 mx-auto mb-2" />
                   <p className="text-xs text-neutral-400">Không tìm thấy kênh phù hợp.</p>
-                  {(activeGroup !== 'all' || debouncedQuery) && (
+                  {(activeGroup !== 'all' || debouncedQuery || statusFilter !== 'all') && (
                     <button
                       onClick={() => {
                         setActiveGroup('all');
                         setSearchQuery('');
+                        setStatusFilter('all');
+                        loadChannels('all', '', 1, pageSizeRef.current, 'all');
                       }}
                       className="mt-2 text-xs text-amber-400 hover:underline"
                     >
@@ -734,6 +1035,8 @@ export default function App() {
                         onPlay={handleSelectChannel}
                         onToggleFavorite={handleToggleFavorite}
                         onOpenDetails={(ch, e) => handleOpenDetails(ch, e)}
+                        onScanChannel={handleScanSingleChannel}
+                        isScanning={scanningChannelId === channel.id}
                         isNokiaLightweight={isNokiaLightweight}
                       />
                     ))}
@@ -758,25 +1061,36 @@ export default function App() {
                           <div className="flex items-center bg-neutral-900 border border-neutral-800 rounded-lg p-0.5">
                             <button
                               type="button"
-                              onClick={() => handleChangePageSize(50)}
+                              onClick={() => handleChangePageSize(24)}
                               className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                                pageSize === 50
+                                pageSize === 24
                                   ? 'bg-amber-500 text-neutral-950'
                                   : 'text-neutral-400 hover:text-white'
                               }`}
                             >
-                              50 / trang
+                              24 / trang
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleChangePageSize(100)}
+                              onClick={() => handleChangePageSize(48)}
                               className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-                                pageSize === 100
+                                pageSize === 48
                                   ? 'bg-amber-500 text-neutral-950'
                                   : 'text-neutral-400 hover:text-white'
                               }`}
                             >
-                              100 / trang
+                              48 / trang
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleChangePageSize(96)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                                pageSize === 96
+                                  ? 'bg-amber-500 text-neutral-950'
+                                  : 'text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              96 / trang
                             </button>
                           </div>
                         </div>

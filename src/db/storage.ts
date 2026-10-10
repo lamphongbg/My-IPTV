@@ -128,12 +128,33 @@ function loadFileState() {
   }
 }
 
-function saveFileState() {
-  try {
-    fs.writeFileSync(PLAYLISTS_FILE, JSON.stringify(playlistsCache, null, 2), 'utf-8');
-    fs.writeFileSync(CHANNELS_FILE, JSON.stringify(channelsCache, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('[Storage] Error writing local data files:', err);
+let saveDebounceTimer: NodeJS.Timeout | null = null;
+
+export function saveFileState(immediate = false) {
+  if (immediate) {
+    if (saveDebounceTimer) {
+      clearTimeout(saveDebounceTimer);
+      saveDebounceTimer = null;
+    }
+    try {
+      fs.writeFileSync(PLAYLISTS_FILE, JSON.stringify(playlistsCache, null, 2), 'utf-8');
+      fs.writeFileSync(CHANNELS_FILE, JSON.stringify(channelsCache, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('[Storage] Error writing local data files:', err);
+    }
+    return;
+  }
+
+  if (!saveDebounceTimer) {
+    saveDebounceTimer = setTimeout(() => {
+      saveDebounceTimer = null;
+      try {
+        fs.writeFileSync(PLAYLISTS_FILE, JSON.stringify(playlistsCache, null, 2), 'utf-8');
+        fs.writeFileSync(CHANNELS_FILE, JSON.stringify(channelsCache, null, 2), 'utf-8');
+      } catch (err) {
+        console.error('[Storage] Error writing local data files:', err);
+      }
+    }, 2000);
   }
 }
 

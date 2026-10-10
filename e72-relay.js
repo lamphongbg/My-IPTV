@@ -9,7 +9,7 @@ import https from 'https';
 import os from 'os';
 
 const DEFAULT_PORT = 8080;
-const DEFAULT_TARGET = 'https://my-iptv-uguq.onrender.com';
+const DEFAULT_TARGET = process.env.TARGET_URL || process.env.RENDER_EXTERNAL_URL || 'https://my-iptv-uguq.onrender.com';
 
 const args = process.argv.slice(2);
 const TARGET = (args[0] && args[0].startsWith('http')) ? args[0] : DEFAULT_TARGET;

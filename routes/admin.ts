@@ -259,9 +259,18 @@ import {
 
 router.post('/api/admin/channels/scan-all', async (req: Request, res: Response) => {
   try {
-    const concurrency = parseInt(req.body.concurrency as string, 10) || 6;
-    await startBatchScan(concurrency);
-    res.json({ success: true, message: 'Đã bắt đầu tiến trình quét toàn bộ kênh', progress: getScanProgress() });
+    const concurrency = parseInt(req.body.concurrency as string, 10) || 15;
+    const channelIds = Array.isArray(req.body.channelIds) ? req.body.channelIds : undefined;
+    const group = typeof req.body.group === 'string' ? req.body.group : undefined;
+    const scopeDescription = typeof req.body.scopeDescription === 'string' ? req.body.scopeDescription : undefined;
+
+    await startBatchScan({
+      concurrency,
+      channelIds,
+      group,
+      scopeDescription,
+    });
+    res.json({ success: true, message: 'Đã bắt đầu tiến trình quét kênh', progress: getScanProgress() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
