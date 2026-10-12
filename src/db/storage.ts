@@ -78,18 +78,52 @@ async function initPostgresTables() {
 let playlistsCache: Playlist[] = [];
 let channelsCache: Channel[] = [];
 
+// Backup & M3U fallback paths
+const CHANNELS_BAK_FILE = path.join(DATA_DIR, 'channels.json.bak');
+const CHANNELS_M3U_FILE = path.join(DATA_DIR, 'channels.m3u');
+
+// Atomic write helper to prevent corrupted/truncated JSON files on crash or restart
+function atomicWriteJsonSync(filePath: string, data: any) {
+  const tmpPath = `${filePath}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, filePath);
+}
+
 // Seed default playlist and channels if empty
 function seedDefaultData() {
-  if (playlistsCache.length === 0) {
-    let initialChannels: Channel[] = [];
-    if (fs.existsSync(CHANNELS_FILE)) {
-      try {
-        initialChannels = JSON.parse(fs.readFileSync(CHANNELS_FILE, 'utf-8'));
-      } catch (e) {
-        console.warn('[Storage] Error parsing initial channels.json:', e);
-      }
-    }
+  let initialChannels: Channel[] = [];
 
+  // Try channels.json
+  if (fs.existsSync(CHANNELS_FILE)) {
+    try {
+      initialChannels = JSON.parse(fs.readFileSync(CHANNELS_FILE, 'utf-8'));
+    } catch (e) {
+      console.warn('[Storage] Error parsing initial channels.json:', e);
+    }
+  }
+
+  // Fallback to channels.json.bak
+  if (initialChannels.length === 0 && fs.existsSync(CHANNELS_BAK_FILE)) {
+    try {
+      initialChannels = JSON.parse(fs.readFileSync(CHANNELS_BAK_FILE, 'utf-8'));
+      console.log(`[Storage] Restored ${initialChannels.length} channels from channels.json.bak`);
+    } catch (e) {
+      console.warn('[Storage] Error parsing channels.json.bak:', e);
+    }
+  }
+
+  // Fallback to channels.m3u
+  if (initialChannels.length === 0 && fs.existsSync(CHANNELS_M3U_FILE)) {
+    try {
+      const m3uContent = fs.readFileSync(CHANNELS_M3U_FILE, 'utf-8');
+      initialChannels = parseM3U(m3uContent, 'default-playlist');
+      console.log(`[Storage] Fallback parsed ${initialChannels.length} channels from channels.m3u`);
+    } catch (e) {
+      console.warn('[Storage] Error parsing channels.m3u fallback:', e);
+    }
+  }
+
+  if (playlistsCache.length === 0) {
     const defaultPlaylist: Playlist = {
       id: 'default-playlist',
       name: 'Danh sách VTV & Quốc tế (Mặc định)',
@@ -99,16 +133,18 @@ function seedDefaultData() {
       last_updated: new Date().toISOString(),
       status: 'active',
     };
-
     playlistsCache = [defaultPlaylist];
+  }
+
+  if (channelsCache.length === 0 && initialChannels.length > 0) {
     channelsCache = initialChannels.map((c) => ({
       ...c,
-      playlist_id: 'default-playlist',
-      updated_at: new Date().toISOString(),
+      playlist_id: c.playlist_id || 'default-playlist',
+      updated_at: c.updated_at || new Date().toISOString(),
     }));
-
-    saveFileState();
   }
+
+  saveFileState(true);
 }
 
 function loadFileState() {
@@ -116,16 +152,57 @@ function loadFileState() {
     if (fs.existsSync(PLAYLISTS_FILE)) {
       playlistsCache = JSON.parse(fs.readFileSync(PLAYLISTS_FILE, 'utf-8'));
     }
+  } catch (err) {
+    console.error('[Storage] Error reading playlists.json:', err);
+    playlistsCache = [];
+  }
+
+  try {
     if (fs.existsSync(CHANNELS_FILE)) {
       channelsCache = JSON.parse(fs.readFileSync(CHANNELS_FILE, 'utf-8'));
     }
   } catch (err) {
-    console.error('[Storage] Error reading local data files:', err);
+    console.error('[Storage] Error reading channels.json, attempting fallback to channels.json.bak:', err);
+    channelsCache = [];
   }
 
-  if (playlistsCache.length === 0) {
-    seedDefaultData();
+  // Fallback to backup file if channelsCache is empty
+  if (channelsCache.length === 0 && fs.existsSync(CHANNELS_BAK_FILE)) {
+    try {
+      channelsCache = JSON.parse(fs.readFileSync(CHANNELS_BAK_FILE, 'utf-8'));
+      console.log(`[Storage] Successfully recovered ${channelsCache.length} channels from channels.json.bak`);
+      // Re-save recovered data to channels.json atomically
+      atomicWriteJsonSync(CHANNELS_FILE, channelsCache);
+    } catch (bakErr) {
+      console.error('[Storage] Error reading channels.json.bak:', bakErr);
+    }
   }
+
+  // Fallback to channels.m3u if still empty
+  if (channelsCache.length === 0 && fs.existsSync(CHANNELS_M3U_FILE)) {
+    try {
+      const m3uContent = fs.readFileSync(CHANNELS_M3U_FILE, 'utf-8');
+      channelsCache = parseM3U(m3uContent, 'default-playlist');
+      console.log(`[Storage] Restored ${channelsCache.length} channels from channels.m3u`);
+      atomicWriteJsonSync(CHANNELS_FILE, channelsCache);
+    } catch (m3uErr) {
+      console.error('[Storage] Error reading channels.m3u:', m3uErr);
+    }
+  }
+
+  // If playlistsCache is empty, or channelsCache was empty, run seedDefaultData
+  if (playlistsCache.length === 0 || channelsCache.length === 0) {
+    seedDefaultData();
+  } else {
+    // Keep backup updated
+    try {
+      if (channelsCache.length > 0 && (!fs.existsSync(CHANNELS_BAK_FILE) || Math.random() < 0.2)) {
+        atomicWriteJsonSync(CHANNELS_BAK_FILE, channelsCache);
+      }
+    } catch {}
+  }
+
+  console.log(`[Storage] State loaded: ${playlistsCache.length} playlists, ${channelsCache.length} channels.`);
 }
 
 let saveDebounceTimer: NodeJS.Timeout | null = null;
@@ -137,10 +214,11 @@ export function saveFileState(immediate = false) {
       saveDebounceTimer = null;
     }
     try {
-      fs.writeFileSync(PLAYLISTS_FILE, JSON.stringify(playlistsCache, null, 2), 'utf-8');
-      fs.writeFileSync(CHANNELS_FILE, JSON.stringify(channelsCache, null, 2), 'utf-8');
+      atomicWriteJsonSync(PLAYLISTS_FILE, playlistsCache);
+      atomicWriteJsonSync(CHANNELS_FILE, channelsCache);
+      atomicWriteJsonSync(CHANNELS_BAK_FILE, channelsCache);
     } catch (err) {
-      console.error('[Storage] Error writing local data files:', err);
+      console.error('[Storage] Error writing local data files atomically:', err);
     }
     return;
   }
@@ -149,10 +227,10 @@ export function saveFileState(immediate = false) {
     saveDebounceTimer = setTimeout(() => {
       saveDebounceTimer = null;
       try {
-        fs.writeFileSync(PLAYLISTS_FILE, JSON.stringify(playlistsCache, null, 2), 'utf-8');
-        fs.writeFileSync(CHANNELS_FILE, JSON.stringify(channelsCache, null, 2), 'utf-8');
+        atomicWriteJsonSync(PLAYLISTS_FILE, playlistsCache);
+        atomicWriteJsonSync(CHANNELS_FILE, channelsCache);
       } catch (err) {
-        console.error('[Storage] Error writing local data files:', err);
+        console.error('[Storage] Error writing local data files atomically:', err);
       }
     }, 2000);
   }
@@ -316,7 +394,7 @@ export async function getAllActiveChannels(): Promise<Channel[]> {
   if (pool) {
     try {
       const res = await pool.query('SELECT * FROM channels WHERE status = $1', ['active']);
-      return res.rows.filter((c) => !c.playlist_id || enabledPlaylistIds.has(c.playlist_id));
+      return res.rows.filter((c) => !c.playlist_id || enabledPlaylistIds.size === 0 || enabledPlaylistIds.has(c.playlist_id));
     } catch (err) {
       console.error('[Storage] Postgres getAllActiveChannels error:', err);
     }
@@ -324,7 +402,7 @@ export async function getAllActiveChannels(): Promise<Channel[]> {
 
   return channelsCache.filter((c) => {
     if (c.status === 'offline') return false;
-    if (c.playlist_id && !enabledPlaylistIds.has(c.playlist_id)) return false;
+    if (c.playlist_id && enabledPlaylistIds.size > 0 && !enabledPlaylistIds.has(c.playlist_id)) return false;
     return true;
   });
 }
