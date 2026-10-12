@@ -69,8 +69,103 @@ async function initPostgresTables() {
       );
     `);
     console.log('[Storage] PostgreSQL tables verified.');
+    await seedPostgresFromFiles();
   } catch (err) {
     console.error('[Storage] Error initializing PostgreSQL tables:', err);
+  }
+}
+
+// Auto-seed Postgres if tables are newly created and empty
+async function seedPostgresFromFiles() {
+  if (!pool) return;
+  try {
+    const chRes = await pool.query('SELECT COUNT(*) FROM channels');
+    const chCount = parseInt(chRes.rows[0].count, 10);
+    if (chCount === 0) {
+      console.log('[Storage] PostgreSQL channels table is empty. Auto-seeding initial data from local files...');
+      let initialChannels: Channel[] = [];
+      if (fs.existsSync(CHANNELS_FILE)) {
+        try {
+          initialChannels = JSON.parse(fs.readFileSync(CHANNELS_FILE, 'utf-8'));
+        } catch {}
+      }
+      if (initialChannels.length === 0 && fs.existsSync(CHANNELS_BAK_FILE)) {
+        try {
+          initialChannels = JSON.parse(fs.readFileSync(CHANNELS_BAK_FILE, 'utf-8'));
+        } catch {}
+      }
+      if (initialChannels.length === 0 && fs.existsSync(CHANNELS_M3U_FILE)) {
+        try {
+          initialChannels = parseM3U(fs.readFileSync(CHANNELS_M3U_FILE, 'utf-8'), 'default-playlist');
+        } catch {}
+      }
+
+      const CHUNK_SIZE = 300;
+      for (let i = 0; i < initialChannels.length; i += CHUNK_SIZE) {
+        const chunk = initialChannels.slice(i, i + CHUNK_SIZE);
+        const valuePlaceholders: string[] = [];
+        const params: any[] = [];
+        let pIndex = 1;
+        for (const c of chunk) {
+          valuePlaceholders.push(`($${pIndex}, $${pIndex + 1}, $${pIndex + 2}, $${pIndex + 3}, $${pIndex + 4}, $${pIndex + 5}, $${pIndex + 6}, $${pIndex + 7}, $${pIndex + 8}, $${pIndex + 9}, $${pIndex + 10}, $${pIndex + 11}, $${pIndex + 12}, $${pIndex + 13}, $${pIndex + 14})`);
+          params.push(
+            c.id,
+            c.playlist_id || 'default-playlist',
+            c.name,
+            c.group || 'Khác',
+            c.logo || '',
+            c.stream_url,
+            c.format || 'hls',
+            c.tvg_id || null,
+            c.tvg_name || null,
+            c.video_codec || null,
+            c.audio_codec || null,
+            c.resolution || null,
+            c.status || 'active',
+            c.description || null,
+            c.updated_at || new Date().toISOString()
+          );
+          pIndex += 15;
+        }
+        await pool.query(
+          `INSERT INTO channels (id, playlist_id, name, "group", logo, stream_url, format, tvg_id, tvg_name, video_codec, audio_codec, resolution, status, description, updated_at)
+           VALUES ${valuePlaceholders.join(', ')} ON CONFLICT (id) DO NOTHING`,
+          params
+        );
+      }
+      console.log(`[Storage] Successfully seeded ${initialChannels.length} channels into PostgreSQL.`);
+    }
+
+    const plRes = await pool.query('SELECT COUNT(*) FROM playlists');
+    const plCount = parseInt(plRes.rows[0].count, 10);
+    if (plCount === 0) {
+      let initialPlaylists: Playlist[] = [];
+      if (fs.existsSync(PLAYLISTS_FILE)) {
+        try {
+          initialPlaylists = JSON.parse(fs.readFileSync(PLAYLISTS_FILE, 'utf-8'));
+        } catch {}
+      }
+      if (initialPlaylists.length === 0) {
+        initialPlaylists = [{
+          id: 'default-playlist',
+          name: 'Danh sách VTV & Quốc tế (Mặc định)',
+          type: 'content',
+          enabled: true,
+          channel_count: chCount || 0,
+          last_updated: new Date().toISOString(),
+          status: 'active'
+        }];
+      }
+      for (const pl of initialPlaylists) {
+        await pool.query(
+          `INSERT INTO playlists (id, name, type, url, content, enabled, channel_count, last_updated, status, error_message)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (id) DO NOTHING`,
+          [pl.id, pl.name, pl.type, pl.url || null, pl.content || null, pl.enabled, pl.channel_count, pl.last_updated, pl.status, pl.error_message || null]
+        );
+      }
+    }
+  } catch (err) {
+    console.error('[Storage] Error during Postgres auto-seeding:', err);
   }
 }
 
@@ -752,3 +847,68 @@ export async function testStreamUrl(url: string): Promise<StreamTestResult> {
     };
   }
 }
+
+/**
+ * Xóa vĩnh viễn toàn bộ các kênh đang có trạng thái 'offline'
+ */
+export async function purgeOfflineChannels(): Promise<{ deletedCount: number; remainingCount: number }> {
+  let deletedCount = 0;
+  if (pool) {
+    try {
+      const res = await pool.query("DELETE FROM channels WHERE status = 'offline' RETURNING id");
+      deletedCount = res.rowCount || 0;
+      const countRes = await pool.query('SELECT COUNT(*) FROM channels');
+      const remainingCount = parseInt(countRes.rows[0].count, 10);
+
+      // Cập nhật lại số lượng kênh trong playlists
+      await pool.query(`
+        UPDATE playlists p
+        SET channel_count = (SELECT COUNT(*) FROM channels c WHERE c.playlist_id = p.id)
+      `);
+
+      return { deletedCount, remainingCount };
+    } catch (err) {
+      console.error('[Storage] Postgres purgeOfflineChannels error:', err);
+    }
+  }
+
+  const initialCount = channelsCache.length;
+  channelsCache = channelsCache.filter((c) => c.status !== 'offline');
+  deletedCount = initialCount - channelsCache.length;
+
+  // Cập nhật lại channel_count trong playlistsCache
+  const countsByPl: Record<string, number> = {};
+  for (const c of channelsCache) {
+    if (c.playlist_id) countsByPl[c.playlist_id] = (countsByPl[c.playlist_id] || 0) + 1;
+  }
+  for (const pl of playlistsCache) {
+    pl.channel_count = countsByPl[pl.id] || 0;
+  }
+
+  saveFileState(true);
+  return { deletedCount, remainingCount: channelsCache.length };
+}
+
+/**
+ * Lấy thông tin cơ sở dữ liệu và lưu trữ hiện tại
+ */
+export async function getStorageInfo(): Promise<{
+  backend: 'postgres' | 'local_json';
+  hasDatabaseUrl: boolean;
+  totalChannels: number;
+  activeChannels: number;
+  offlineChannels: number;
+}> {
+  const all = await getAllChannelsAdmin();
+  const offline = all.filter((c) => c.status === 'offline').length;
+  const active = all.length - offline;
+
+  return {
+    backend: pool ? 'postgres' : 'local_json',
+    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+    totalChannels: all.length,
+    activeChannels: active,
+    offlineChannels: offline,
+  };
+}
+

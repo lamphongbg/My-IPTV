@@ -30,6 +30,14 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Download,
+  HardDrive,
+  Copy,
+  HelpCircle,
+  Cloud,
+  Sparkles,
+  GitBranch,
+  GitCommit,
 } from 'lucide-react';
 
 const ADMIN_TOKEN_KEY = 'my_iptv_admin_token';
@@ -99,6 +107,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
   const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
   const [scanScope, setScanScope] = useState<'page' | 'filtered' | 'all'>('page');
   const [scanConcurrency, setScanConcurrency] = useState<number>(15);
+  const [autoPurgeOffline, setAutoPurgeOffline] = useState<boolean>(false);
+  const [isPurging, setIsPurging] = useState<boolean>(false);
+  const [isStorageModalOpen, setIsStorageModalOpen] = useState<boolean>(false);
+  const [storageInfo, setStorageInfo] = useState<{
+    backend: string;
+    hasDatabaseUrl: boolean;
+    totalChannels: number;
+    activeChannels: number;
+    offlineChannels: number;
+  } | null>(null);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  // GitHub Sync State
+  const [isGitHubModalOpen, setIsGitHubModalOpen] = useState<boolean>(false);
+  const [githubTokenInput, setGithubTokenInput] = useState<string>(() => localStorage.getItem('iptv_gh_token') || '');
+  const [githubRepoInput, setGithubRepoInput] = useState<string>(() => localStorage.getItem('iptv_gh_repo') || '');
+  const [githubBranchInput, setGithubBranchInput] = useState<string>(() => localStorage.getItem('iptv_gh_branch') || 'main');
+  const [githubSyncMode, setGithubSyncMode] = useState<'clean_only' | 'all'>('clean_only');
+  const [isSyncingGitHub, setIsSyncingGitHub] = useState<boolean>(false);
+  const [githubSyncResult, setGithubSyncResult] = useState<{ message: string; commitUrl?: string } | null>(null);
 
   // Stream probe state
   const [testUrlInput, setTestUrlInput] = useState<string>('');
@@ -187,10 +215,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     if (!token) return;
     setIsLoading(true);
     try {
-      const [statsRes, playlistsRes, channelsRes] = await Promise.all([
+      const [statsRes, playlistsRes, channelsRes, storageRes] = await Promise.all([
         fetch('/api/admin/stats', { headers: authHeaders() }),
         fetch('/api/admin/playlists', { headers: authHeaders() }),
         fetch('/api/admin/channels', { headers: authHeaders() }),
+        fetch('/api/admin/storage-status', { headers: authHeaders() }).catch(() => null),
       ]);
 
       if (statsRes.status === 401 || playlistsRes.status === 401) {
@@ -199,6 +228,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
       }
 
       if (statsRes.ok) setStats(await statsRes.json());
+      if (storageRes && storageRes.ok) setStorageInfo(await storageRes.json());
       if (playlistsRes.ok) {
         const rawPls = await playlistsRes.json();
         const sortedPls = Array.isArray(rawPls)
@@ -438,6 +468,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
           channelIds,
           group,
           scopeDescription: scopeDesc,
+          autoPurgeOffline,
         }),
       });
       const data = await res.json();
@@ -519,6 +550,161 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
       fetchAdminData();
     } catch (err: any) {
       showNotification(err.message, 'error');
+    }
+  };
+
+  const handlePurgeOfflineChannels = async () => {
+    const offlineCount = channels.filter((c) => c.status === 'offline').length;
+    if (offlineCount === 0) {
+      showNotification('Hiện không có kênh nào bị đánh dấu lỗi (offline) để xóa!');
+      return;
+    }
+
+    if (
+      !confirm(
+        `XÁC NHẬN XÓA VĨNH VIỄN ${offlineCount.toLocaleString('vi-VN')} KÊNH LỖI (OFFLINE)?\n\n` +
+        `• Các kênh không kết nối được sẽ bị loại bỏ hoàn toàn khỏi hệ thống.\n` +
+        `• Bạn có thể tải file channels.json đã làm sạch sau đó để lưu vào Git.\n` +
+        `• Tiếp tục xóa?`
+      )
+    ) {
+      return;
+    }
+
+    setIsPurging(true);
+    try {
+      const res = await fetch('/api/admin/channels/purge-offline', {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Lỗi khi xóa kênh offline');
+      showNotification(data.message, 'success');
+      fetchAdminData();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
+  const handleExportCleanJson = async () => {
+    try {
+      showNotification('Đang chuẩn bị file channels.json sạch...');
+      const res = await fetch(`/api/admin/channels/export-clean-json?token=${encodeURIComponent(token || '')}`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error('Không thể tải file channels.json');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'channels.json';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showNotification('Đã tải thành công file channels.json sạch về máy tính!');
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  };
+
+  const handleExportCleanM3u = async () => {
+    try {
+      showNotification('Đang chuẩn bị file channels_clean.m3u...');
+      const res = await fetch(`/api/admin/channels/export-clean-m3u?token=${encodeURIComponent(token || '')}`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error('Không thể tải file playlist M3U');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'channels_clean.m3u';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showNotification('Đã tải thành công file playlist M3U sạch về máy tính!');
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  };
+
+  const handleCopyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedText(label);
+    showNotification(`Đã sao chép: ${label}`);
+    setTimeout(() => setCopiedText(null), 3000);
+  };
+
+  const handleExportFullJson = async () => {
+    try {
+      showNotification('Đang chuẩn bị file channels_scanned_full.json...');
+      const res = await fetch(`/api/admin/channels/export-full-json?token=${encodeURIComponent(token || '')}`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error('Không thể tải file');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'channels_scanned_full.json';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showNotification('Đã tải thành công file dữ liệu đầy đủ kèm trạng thái rà soát!');
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  };
+
+  const handleSyncToGitHub = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!githubTokenInput.trim()) {
+      showNotification('Vui lòng nhập GitHub Personal Access Token (PAT)!', 'error');
+      return;
+    }
+    if (!githubRepoInput.trim() || !githubRepoInput.includes('/')) {
+      showNotification('Vui lòng nhập repository hợp lệ (dạng username/repo-name)!', 'error');
+      return;
+    }
+
+    setIsSyncingGitHub(true);
+    setGithubSyncResult(null);
+
+    // Lưu vào localStorage để lần sau người dùng không phải gõ lại
+    localStorage.setItem('iptv_gh_token', githubTokenInput.trim());
+    localStorage.setItem('iptv_gh_repo', githubRepoInput.trim());
+    localStorage.setItem('iptv_gh_branch', githubBranchInput.trim() || 'main');
+
+    try {
+      const res = await fetch('/api/admin/github-sync', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          githubToken: githubTokenInput.trim(),
+          repo: githubRepoInput.trim(),
+          branch: githubBranchInput.trim() || 'main',
+          mode: githubSyncMode,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Đồng bộ lên GitHub thất bại');
+
+      setGithubSyncResult({
+        message: data.message,
+        commitUrl: data.commitUrl,
+      });
+      showNotification('Đã đồng bộ dữ liệu thành công lên GitHub! Render sẽ tự động cập nhật.', 'success');
+      fetchAdminData();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    } finally {
+      setIsSyncingGitHub(false);
     }
   };
 
@@ -972,6 +1158,51 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   </span>
                 </button>
 
+                {/* Nút xóa kênh lỗi vĩnh viễn */}
+                <button
+                  onClick={handlePurgeOfflineChannels}
+                  disabled={isPurging}
+                  className={`px-3 py-2 border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition ${
+                    offlineChannelsCount > 0
+                      ? 'bg-rose-950/80 hover:bg-rose-900 border-rose-700/80 text-rose-200 animate-pulse'
+                      : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-800 text-neutral-400'
+                  }`}
+                  title="Xóa vĩnh viễn tất cả các kênh bị lỗi khỏi hệ thống"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>{isPurging ? 'Đang xóa...' : `Xóa ${offlineChannelsCount > 0 ? `${offlineChannelsCount} ` : ''}kênh lỗi`}</span>
+                </button>
+
+                {/* Nút xuất channels.json sạch */}
+                <button
+                  onClick={handleExportCleanJson}
+                  className="px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
+                  title="Tải về file channels.json sạch để commit vào GitHub"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Tải JSON sạch</span>
+                </button>
+
+                {/* Nút hướng dẫn lưu vĩnh viễn trên Render */}
+                <button
+                  onClick={() => setIsStorageModalOpen(true)}
+                  className="px-3 py-2 bg-indigo-950/70 hover:bg-indigo-900/90 text-indigo-300 border border-indigo-800/80 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow"
+                  title="Xem giải pháp lưu dữ liệu không bị mất khi Render tự động redeploy"
+                >
+                  <Cloud className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Lưu cố định trên Render</span>
+                </button>
+
+                {/* Nút đồng bộ lên GitHub */}
+                <button
+                  onClick={() => setIsGitHubModalOpen(true)}
+                  className="px-3 py-2 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/80 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow"
+                  title="Đẩy trực tiếp toàn bộ dữ liệu kênh đã rà soát lên GitHub repository của bạn"
+                >
+                  <GitBranch className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Đồng bộ lên GitHub</span>
+                </button>
+
                 <button
                   onClick={handleResetAllStatus}
                   className="px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
@@ -1137,6 +1368,51 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   <p className="text-[11px] text-neutral-400 truncate">
                     Đang kiểm tra: <span className="text-amber-300 font-medium">{scanProgress.currentChannelName}</span>
                   </p>
+                )}
+
+                {/* Khối tác vụ nhanh khi hoàn tất rà soát */}
+                {!scanProgress.isRunning && (
+                  <div className="pt-2 border-t border-neutral-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="text-[11px] text-neutral-400">
+                      {scanProgress.offlineCount > 0 ? (
+                        <span>
+                          Phát hiện <strong className="text-rose-400">{scanProgress.offlineCount}</strong> kênh không hoạt động.
+                        </span>
+                      ) : (
+                        <span className="text-emerald-400">Tất cả {scanProgress.total} kênh đều hoạt động tốt!</span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {scanProgress.offlineCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={handlePurgeOfflineChannels}
+                          disabled={isPurging}
+                          className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-xs flex items-center gap-1 transition shadow"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Xóa {scanProgress.offlineCount} kênh lỗi này</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleExportCleanJson}
+                        className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-lg text-xs font-medium flex items-center gap-1 transition"
+                      >
+                        <Download className="w-3 h-3 text-amber-400" />
+                        <span>Tải JSON sạch</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsStorageModalOpen(true)}
+                        className="px-2.5 py-1 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-800 rounded-lg text-xs font-medium flex items-center gap-1 transition"
+                      >
+                        <Cloud className="w-3 h-3 text-indigo-400" />
+                        <span>Lưu cố định trên Render</span>
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -1975,6 +2251,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
               </div>
             </div>
 
+            {/* Tùy chọn tự động xóa kênh lỗi khi quét */}
+            <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-xl">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoPurgeOffline}
+                  onChange={(e) => setAutoPurgeOffline(e.target.checked)}
+                  className="mt-0.5 rounded text-rose-500 focus:ring-0"
+                />
+                <div>
+                  <div className="text-xs font-semibold text-rose-300 flex items-center gap-1.5">
+                    <span>Tự động xóa vĩnh viễn các kênh lỗi sau khi quét xong</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    Tất cả kênh chết / không kết nối được sẽ tự động bị loại bỏ hoàn toàn khỏi hệ thống mà không cần thao tác xóa thủ công.
+                  </p>
+                </div>
+              </label>
+            </div>
+
             {/* Actions */}
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
               <button
@@ -2016,6 +2312,445 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
             </div>
             <div className="p-4">
               <VideoPlayer channel={previewChannel} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Render Storage & Persistence Guide Modal */}
+      {isStorageModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl my-8 flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-4 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-950 border border-indigo-800 flex items-center justify-center text-indigo-400">
+                  <Cloud className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Hướng Dẫn Giữ Kết Quả Quét Khi Render Auto-Deploy
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Giải pháp để không phải quét lại danh sách kênh mỗi khi Render triển khai phiên bản mới
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsStorageModalOpen(false)}
+                className="text-neutral-400 hover:text-white p-1.5 rounded-xl hover:bg-neutral-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-5 overflow-y-auto space-y-5 text-xs text-neutral-300 leading-relaxed">
+              {/* Status Box */}
+              <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                storageInfo?.hasDatabaseUrl
+                  ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-200'
+                  : 'bg-amber-950/40 border-amber-800/80 text-amber-200'
+              }`}>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${storageInfo?.hasDatabaseUrl ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                    <span className="font-bold text-xs">
+                      {storageInfo?.hasDatabaseUrl
+                        ? 'ĐÃ KẾT NỐI POSTGRESQL (LƯU TRỮ VĨNH VIỄN)'
+                        : 'HIỆN TẠI: ĐANG DÙNG TẬP TIN TẠM THỜI (EPHEMERAL JSON)'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-300">
+                    {storageInfo?.hasDatabaseUrl
+                      ? 'Dữ liệu kênh và kết quả quét được lưu trong database PostgreSQL bên ngoài. Khi Render redeploy, mọi kết quả quét vẫn còn nguyên vẹn 100%!'
+                      : 'Trên Render, mỗi lần tự động redeploy, container cũ bị hủy và tạo mới từ Git -> kết quả quét bị reset. Chọn 1 trong 3 cách dưới đây để khắc phục triệt để:'}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <span className="text-[11px] text-neutral-400 block">Kênh hiện có:</span>
+                  <span className="text-sm font-bold text-white">
+                    {channels.length.toLocaleString('vi-VN')} ({channels.filter(c => c.status === 'active').length} sống / {channels.filter(c => c.status === 'offline').length} lỗi)
+                  </span>
+                </div>
+              </div>
+
+              {/* Giải pháp 1: Render PostgreSQL (Khuyên dùng số 1) */}
+              <div className="p-4 bg-neutral-950 border border-indigo-900/60 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold text-[10px]">
+                      CÁCH 1 (KHUYÊN DÙNG NHẤT - 100% MIỄN PHÍ)
+                    </span>
+                    <h4 className="font-bold text-white text-xs">Kết nối Render PostgreSQL Database</h4>
+                  </div>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Tự động 100%</span>
+                </div>
+
+                <p className="text-neutral-400 text-[11px]">
+                  Render cung cấp cơ sở dữ liệu PostgreSQL miễn phí. Khi kết nối, ứng dụng sẽ tự động nạp kênh vào PostgreSQL và lưu vĩnh viễn mọi kết quả quét:
+                </p>
+
+                <ol className="list-decimal list-inside space-y-2 text-[11px] text-neutral-300 pl-1">
+                  <li>
+                    Đăng nhập <strong>dashboard.render.com</strong>, bấm nút <strong>New +</strong> (góc phải trên) &rarr; Chọn <strong>PostgreSQL</strong>.
+                  </li>
+                  <li>
+                    Đặt tên (vd: <code className="px-1.5 py-0.5 bg-neutral-900 rounded font-mono text-amber-300">my-iptv-db</code>), chọn Region (ví dụ <strong>Singapore</strong>), chọn gói <strong>Free Instance</strong> &rarr; Bấm <strong>Create Database</strong>.
+                  </li>
+                  <li>
+                    Chờ khoảng 30 giây để Render tạo xong. Cuộn xuống phần <strong>Connections</strong>:
+                    <div className="mt-1 pl-4 text-neutral-400">
+                      &bull; Nếu ứng dụng web cùng nằm trên Render: Copy dòng <strong>Internal Database URL</strong> (tốc độ kết nối cực nhanh).<br />
+                      &bull; Hoặc copy dòng <strong>External Database URL</strong>.
+                    </div>
+                  </li>
+                  <li>
+                    Mở Web Service của bạn trên Render &rarr; Vào tab <strong>Environment</strong> &rarr; Bấm <strong>Add Environment Variable</strong>:
+                    <div className="mt-1.5 flex items-center gap-2 bg-neutral-900 p-2 rounded-lg border border-neutral-800 font-mono text-xs">
+                      <span className="text-amber-400 font-bold">DATABASE_URL</span>
+                      <span className="text-neutral-500">=</span>
+                      <span className="text-emerald-400 truncate flex-1">postgres://user:password@host/dbname</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyText('DATABASE_URL', 'Biến DATABASE_URL')}
+                        className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded text-[10px] flex items-center gap-1"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedText === 'Biến DATABASE_URL' ? 'Đã copy' : 'Copy tên'}</span>
+                      </button>
+                    </div>
+                  </li>
+                  <li>
+                    Bấm <strong>Save Changes</strong>. Render sẽ tự redeploy và ứng dụng sẽ <strong>tự động seed/nhập toàn bộ kênh</strong> vào Postgres!
+                  </li>
+                </ol>
+
+                <div className="p-2.5 bg-emerald-950/30 border border-emerald-900/50 rounded-lg text-[11px] text-emerald-300">
+                  ✨ <strong>Ưu điểm:</strong> Một lần thiết lập xong là từ nay về sau Render tự deploy thoải mái mà danh sách kênh sống/chết không bao giờ bị mất!
+                </div>
+              </div>
+
+              {/* Giải pháp 2: Xóa kênh lỗi & Lưu channels.json sạch vào Git */}
+              <div className="p-4 bg-neutral-950 border border-neutral-800 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold text-[10px]">
+                      CÁCH 2 (KHÔNG CẦN DATABASE)
+                    </span>
+                    <h4 className="font-bold text-white text-xs">Xóa Kênh Lỗi & Tải channels.json Sạch Để Commit Vào Git</h4>
+                  </div>
+                  <span className="text-[10px] text-neutral-400">Đơn giản, trực tiếp</span>
+                </div>
+
+                <p className="text-neutral-400 text-[11px]">
+                  Nếu bạn không muốn tạo database bên ngoài, bạn có thể lọc sạch kênh lỗi một lần và commit file sạch vào kho Git của bạn:
+                </p>
+
+                <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-neutral-300 pl-1">
+                  <li>Bấm nút <strong>"Quét Rà Soát Kênh"</strong> để hệ thống tìm ra toàn bộ kênh chết.</li>
+                  <li>Bấm nút <strong>"Xóa kênh lỗi"</strong> (hoặc bật tùy chọn tự động xóa khi quét) để loại bỏ hoàn toàn các kênh chết.</li>
+                  <li>Bấm nút <strong>"Tải JSON sạch"</strong> bên dưới để tải file <code className="text-amber-300 font-mono">channels.json</code> về máy tính của bạn.</li>
+                  <li>Chép đè file vừa tải vào thư mục <code className="text-amber-300 font-mono">data/channels.json</code> trong dự án mã nguồn trên máy bạn.</li>
+                  <li>Mở Terminal trên máy tính và chạy lệnh commit đẩy lên GitHub:</li>
+                </ol>
+
+                <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800 font-mono text-[11px] text-neutral-200 flex items-center justify-between">
+                  <code>git add data/channels.json && git commit -m "Loc kenh loi" && git push</code>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText('git add data/channels.json && git commit -m "Loc kenh loi" && git push', 'Lệnh Git')}
+                    className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded text-[10px] flex items-center gap-1 flex-shrink-0 ml-2"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>{copiedText === 'Lệnh Git' ? 'Đã copy' : 'Copy lệnh'}</span>
+                  </button>
+                </div>
+
+                {/* Tải nhanh file */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleExportCleanJson}
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-lg text-xs flex items-center gap-1.5 transition"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Tải Về channels.json Sạch</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportCleanM3u}
+                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-medium flex items-center gap-1.5 transition"
+                  >
+                    <Download className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Tải Về M3U Sạch (.m3u)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Giải pháp 3: Render Persistent Disk */}
+              <div className="p-4 bg-neutral-950 border border-neutral-800 rounded-xl space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-neutral-800 text-neutral-300 border border-neutral-700 font-bold text-[10px]">
+                    CÁCH 3 (GÓI RENDER STARTER)
+                  </span>
+                  <h4 className="font-bold text-white text-xs">Gắn Render Persistent Disk</h4>
+                </div>
+                <p className="text-neutral-400 text-[11px]">
+                  Nếu Web Service của bạn là gói trả phí (từ $7/tháng), vào Service &rarr; Tab <strong>Disks</strong> &rarr; Bấm <strong>Add Disk</strong>:
+                  Mount Path điền <code className="px-1 bg-neutral-900 rounded font-mono text-amber-300">/opt/render/project/src/data</code>. Mọi file trong thư mục data sẽ được giữ nguyên vĩnh viễn trên ổ cứng.
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-neutral-950 border-t border-neutral-800 flex items-center justify-between">
+              <span className="text-[11px] text-neutral-500">
+                Gợi ý: Dùng Cách 1 (Render Postgres) hoặc Cách 2 (Tải JSON sạch) để giải quyết ngay lập tức.
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsStorageModalOpen(false)}
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-semibold transition"
+              >
+                Đã Hiểu, Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GitHub Sync Modal */}
+      {isGitHubModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl my-8 flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-4 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-950 border border-emerald-800 flex items-center justify-center text-emerald-400">
+                  <GitBranch className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Đồng Bộ Toàn Bộ Dữ Liệu Kênh Lên GitHub (1 Chạm)
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Tự động tạo commit chứa dữ liệu sau khi rà soát lên kho GitHub để Render tự deploy lại
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsGitHubModalOpen(false)}
+                className="text-neutral-400 hover:text-white p-1.5 rounded-xl hover:bg-neutral-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-5 overflow-y-auto space-y-4 text-xs text-neutral-300">
+              {/* Thống kê dữ liệu đã quét */}
+              <div className="p-3.5 bg-neutral-950 border border-neutral-800 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] text-neutral-400 block font-medium">Trạng thái dữ liệu hiện tại:</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="font-bold text-white text-sm">
+                      {channels.length.toLocaleString('vi-VN')} kênh
+                    </span>
+                    <span className="text-emerald-400 text-xs font-semibold">
+                      ({channels.filter(c => c.status === 'active').length.toLocaleString('vi-VN')} hoạt động
+                    </span>
+                    <span className="text-rose-400 text-xs font-semibold">
+                      / {channels.filter(c => c.status === 'offline').length.toLocaleString('vi-VN')} lỗi)
+                    </span>
+                  </div>
+                </div>
+                <div className="px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 font-bold text-[11px] flex items-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Đã quét xong</span>
+                </div>
+              </div>
+
+              {/* Form đồng bộ */}
+              <form onSubmit={handleSyncToGitHub} className="space-y-3.5">
+                {/* Repository Input */}
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-200 mb-1">
+                    GitHub Repository <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={githubRepoInput}
+                    onChange={(e) => setGithubRepoInput(e.target.value)}
+                    placeholder="ví dụ: lamphongstbg/my-iptv"
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500"
+                  />
+                  <p className="text-[10px] text-neutral-500 mt-0.5">
+                    Định dạng: <code>tên-user/tên-repository</code> nơi bạn kết nối với Render
+                  </p>
+                </div>
+
+                {/* Branch Input */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-200 mb-1">
+                      Nhánh (Branch)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={githubBranchInput}
+                      onChange={(e) => setGithubBranchInput(e.target.value)}
+                      placeholder="main"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  {/* Mode Selector */}
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-200 mb-1">
+                      Dữ liệu kênh muốn đẩy lên
+                    </label>
+                    <select
+                      value={githubSyncMode}
+                      onChange={(e) => setGithubSyncMode(e.target.value as any)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
+                    >
+                      <option value="clean_only">Chỉ kênh sống (Khuyên dùng - 6.574 kênh)</option>
+                      <option value="all">Toàn bộ kênh (11.186 kênh kèm trạng thái)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Token Input */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-neutral-200">
+                      GitHub Personal Access Token (PAT) <span className="text-rose-400">*</span>
+                    </label>
+                    <a
+                      href="https://github.com/settings/tokens/new?scopes=repo&description=IPTV-Auto-Sync"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-emerald-400 hover:underline flex items-center gap-1"
+                    >
+                      <span>Tạo token GitHub nhanh</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    value={githubTokenInput}
+                    onChange={(e) => setGithubTokenInput(e.target.value)}
+                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                  <p className="text-[10px] text-neutral-500 mt-0.5">
+                    Token cần có quyền <strong>repo</strong> (hoặc <strong>Contents: Read and write</strong>). Token chỉ lưu tạm trên trình duyệt của bạn.
+                  </p>
+                </div>
+
+                {/* Nút bấm đồng bộ */}
+                <button
+                  type="submit"
+                  disabled={isSyncingGitHub}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-lg mt-2"
+                >
+                  <GitCommit className={`w-4 h-4 ${isSyncingGitHub ? 'animate-spin' : ''}`} />
+                  <span>
+                    {isSyncingGitHub
+                      ? 'Đang đẩy dữ liệu lên GitHub (vui lòng chờ vài giây)...'
+                      : `Đẩy Ngay ${githubSyncMode === 'clean_only' ? '6.574 Kênh Sạch' : '11.186 Kênh'} Lên GitHub`}
+                  </span>
+                </button>
+              </form>
+
+              {/* Thông báo kết quả sau khi đẩy thành công */}
+              {githubSyncResult && (
+                <div className="p-3.5 bg-emerald-950/60 border border-emerald-800 rounded-xl space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
+                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    <span>{githubSyncResult.message}</span>
+                  </div>
+                  {githubSyncResult.commitUrl && (
+                    <a
+                      href={githubSyncResult.commitUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:underline font-medium"
+                    >
+                      <span>Mở xem commit trên GitHub</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  <p className="text-[10px] text-neutral-400">
+                    ✨ Render đã nhận tín hiệu commit mới từ GitHub và đang tự động tiến hành deploy phiên bản này!
+                  </p>
+                </div>
+              )}
+
+              {/* Lựa chọn tải thủ công thay thế */}
+              <div className="pt-3 border-t border-neutral-800 space-y-2">
+                <span className="text-[11px] text-neutral-400 font-semibold block">
+                  Hoặc bạn có thể tải file dữ liệu về máy để tự Git Push thủ công:
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleExportCleanJson}
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-lg text-xs flex items-center gap-1.5 transition"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Tải channels.json sạch (6.574 kênh)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportFullJson}
+                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-medium flex items-center gap-1.5 transition"
+                  >
+                    <Download className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Tải channels.json đầy đủ (11.186 kênh)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportCleanM3u}
+                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-medium flex items-center gap-1.5 transition"
+                  >
+                    <Download className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Tải M3U sạch</span>
+                  </button>
+                </div>
+
+                <div className="bg-neutral-950 p-2.5 rounded-lg border border-neutral-800 font-mono text-[11px] text-neutral-300 flex items-center justify-between mt-2">
+                  <code>git add data/channels.json && git commit -m "Cap nhat kenh da quet" && git push</code>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText('git add data/channels.json && git commit -m "Cap nhat kenh da quet" && git push', 'Lệnh Git')}
+                    className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded text-[10px] flex items-center gap-1 flex-shrink-0 ml-2"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>{copiedText === 'Lệnh Git' ? 'Đã copy' : 'Copy lệnh'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 bg-neutral-950 border-t border-neutral-800 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setIsGitHubModalOpen(false)}
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-semibold transition"
+              >
+                Đóng
+              </button>
             </div>
           </div>
         </div>

@@ -20,7 +20,10 @@ import {
   updateChannel,
   deleteChannel,
   testStreamUrl,
+  purgeOfflineChannels,
+  getStorageInfo,
 } from '../src/db/storage.js';
+import { generateM3U } from '../utils/m3uParser.js';
 
 const router = Router();
 
@@ -269,12 +272,14 @@ router.post('/api/admin/channels/scan-all', async (req: Request, res: Response) 
     const channelIds = Array.isArray(req.body.channelIds) ? req.body.channelIds : undefined;
     const group = typeof req.body.group === 'string' ? req.body.group : undefined;
     const scopeDescription = typeof req.body.scopeDescription === 'string' ? req.body.scopeDescription : undefined;
+    const autoPurgeOffline = Boolean(req.body.autoPurgeOffline);
 
     await startBatchScan({
       concurrency,
       channelIds,
       group,
       scopeDescription,
+      autoPurgeOffline,
     });
     res.json({ success: true, message: 'Đã bắt đầu tiến trình quét kênh', progress: getScanProgress() });
   } catch (err: any) {
@@ -314,6 +319,183 @@ router.post('/api/admin/channels/reset-status', async (_req: Request, res: Respo
     res.json({ success: true, message: `Đã khôi phục trạng thái hoạt động cho ${channels.length} kênh.` });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Xóa vĩnh viễn tất cả các kênh đang offline (kênh chết)
+router.post('/api/admin/channels/purge-offline', async (_req: Request, res: Response) => {
+  try {
+    const result = await purgeOfflineChannels();
+    res.json({
+      success: true,
+      message: `Đã dọn dẹp và xóa vĩnh viễn ${result.deletedCount} kênh bị lỗi! Còn lại ${result.remainingCount} kênh hoạt động tốt.`,
+      ...result,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Tải về file channels.json đã lọc sạch kênh chết
+router.get('/api/admin/channels/export-clean-json', async (_req: Request, res: Response) => {
+  try {
+    const allChannels = await getAllChannelsAdmin();
+    const cleanChannels = allChannels.filter((c) => c.status !== 'offline');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="channels.json"');
+    res.send(JSON.stringify(cleanChannels, null, 2));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Tải về toàn bộ dữ liệu kênh đã rà soát (bao gồm trạng thái online / offline)
+router.get('/api/admin/channels/export-full-json', async (_req: Request, res: Response) => {
+  try {
+    const allChannels = await getAllChannelsAdmin();
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="channels_scanned_full.json"');
+    res.send(JSON.stringify(allChannels, null, 2));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Tải về file playlist M3U sạch chỉ chứa kênh online
+router.get('/api/admin/channels/export-clean-m3u', async (_req: Request, res: Response) => {
+  try {
+    const allChannels = await getAllChannelsAdmin();
+    const cleanChannels = allChannels.filter((c) => c.status !== 'offline');
+    const m3uContent = generateM3U(cleanChannels);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="channels_clean.m3u"');
+    res.send(m3uContent);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Thông tin lưu trữ và cơ sở dữ liệu hiện tại (Postgres hay Local JSON)
+router.get('/api/admin/storage-status', async (_req: Request, res: Response) => {
+  try {
+    const info = await getStorageInfo();
+    res.json(info);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper đẩy file lên GitHub qua GitHub Contents API
+async function pushFileToGitHub(options: {
+  token: string;
+  repo: string;
+  branch: string;
+  path: string;
+  content: string;
+  message: string;
+}) {
+  const url = `https://api.github.com/repos/${options.repo}/contents/${options.path}`;
+
+  // 1. Kiểm tra SHA nếu file đã tồn tại trên repo
+  let sha: string | undefined;
+  try {
+    const checkRes = await fetch(`${url}?ref=${encodeURIComponent(options.branch)}`, {
+      headers: {
+        Authorization: `Bearer ${options.token}`,
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'IPTV-Stream-App',
+      },
+    });
+    if (checkRes.ok) {
+      const checkData: any = await checkRes.json();
+      sha = checkData.sha;
+    }
+  } catch {}
+
+  // 2. Commit file mới lên GitHub (Base64)
+  const base64Content = Buffer.from(options.content, 'utf-8').toString('base64');
+  const putRes = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${options.token}`,
+      Accept: 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'IPTV-Stream-App',
+    },
+    body: JSON.stringify({
+      message: options.message,
+      content: base64Content,
+      sha,
+      branch: options.branch,
+    }),
+  });
+
+  if (!putRes.ok) {
+    const errData: any = await putRes.json().catch(() => ({}));
+    throw new Error(errData.message || `Lỗi GitHub API: HTTP ${putRes.status}`);
+  }
+
+  return await putRes.json();
+}
+
+// Đồng bộ đẩy dữ liệu đã quét thẳng lên GitHub
+router.post('/api/admin/github-sync', async (req: Request, res: Response) => {
+  try {
+    const { githubToken, repo, branch = 'main', mode = 'clean_only' } = req.body;
+    const token = githubToken?.trim() || process.env.GITHUB_TOKEN;
+
+    if (!token) {
+      return res.status(400).json({
+        error: 'Vui lòng nhập GitHub Personal Access Token (PAT). Bạn có thể tạo tại GitHub Settings -> Developer Settings -> Personal access tokens (classic hoặc fine-grained với quyền Contents: Read and write).',
+      });
+    }
+    if (!repo || !repo.includes('/')) {
+      return res.status(400).json({
+        error: 'Vui lòng nhập repository hợp lệ dạng: username/repo-name (ví dụ: lamphongstbg/my-iptv).',
+      });
+    }
+
+    const cleanRepo = repo.trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '');
+    const cleanBranch = (branch && branch.trim()) || 'main';
+
+    // Chuẩn bị dữ liệu kênh
+    const allChannels = await getAllChannelsAdmin();
+    let targetChannels = allChannels;
+    if (mode === 'clean_only') {
+      targetChannels = allChannels.filter((c) => c.status !== 'offline');
+    }
+
+    const channelsJsonStr = JSON.stringify(targetChannels, null, 2);
+
+    // 1. Đẩy file data/channels.json
+    const syncChannelsResult = await pushFileToGitHub({
+      token,
+      repo: cleanRepo,
+      branch: cleanBranch,
+      path: 'data/channels.json',
+      content: channelsJsonStr,
+      message: `chore: đồng bộ danh sách kênh IPTV đã rà soát (${targetChannels.length} kênh) [skip ci]`,
+    });
+
+    // 2. Đẩy file data/playlists.json
+    const playlists = await getPlaylists();
+    await pushFileToGitHub({
+      token,
+      repo: cleanRepo,
+      branch: cleanBranch,
+      path: 'data/playlists.json',
+      content: JSON.stringify(playlists, null, 2),
+      message: `chore: đồng bộ danh sách playlists IPTV [skip ci]`,
+    }).catch((err) => console.warn('[GitHub Sync] Warning syncing playlists:', err));
+
+    res.json({
+      success: true,
+      message: `Đã đồng bộ thành công ${targetChannels.length.toLocaleString('vi-VN')} kênh lên GitHub (${cleanRepo} / branch ${cleanBranch})! Render sẽ tự động kích hoạt deploy và áp dụng dữ liệu này.`,
+      commitUrl: syncChannelsResult.commit?.html_url || `https://github.com/${cleanRepo}/tree/${cleanBranch}/data`,
+      syncedChannelsCount: targetChannels.length,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Lỗi trong quá trình đồng bộ lên GitHub.' });
   }
 });
 
