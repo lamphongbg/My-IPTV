@@ -209,7 +209,7 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
                 <div className="flex items-center gap-2">
                   <Zap className="w-4 h-4 text-sky-400" />
                   <div>
-                    <span>Tải .M3U 180p (⚡ Siêu nhẹ)</span>
+                    <span>Tải .M3U 180p (Siêu nhẹ)</span>
                     <div className="text-[10px] text-sky-300/80 font-normal">Tải tức thì • Mạng yếu 2G/3G không giật</div>
                   </div>
                 </div>

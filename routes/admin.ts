@@ -334,15 +334,23 @@ router.get('/api/admin/stats', async (_req: Request, res: Response) => {
     const channels = await getAllChannelsAdmin();
 
     const groupsSet = new Set<string>();
+    let activeChannels = 0;
+    let offlineChannels = 0;
     for (const c of channels) {
       if (c.group) groupsSet.add(c.group);
+      if (c.status === 'offline') {
+        offlineChannels++;
+      } else {
+        activeChannels++;
+      }
     }
 
     res.json({
       totalPlaylists: playlists.length,
       activePlaylists: playlists.filter((p) => p.enabled).length,
       totalChannels: channels.length,
-      activeChannels: channels.filter((c) => c.status === 'active').length,
+      activeChannels,
+      offlineChannels,
       groups: Array.from(groupsSet),
     });
   } catch (err: any) {

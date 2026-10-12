@@ -1015,7 +1015,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       >
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-xs flex items-center gap-1.5 flex-wrap">
-                            <span>⚡ Tự động (HLS)</span>
+                            <span>Tự động (HLS)</span>
                             <span className="text-[9px] px-1.5 py-0.5 bg-neutral-800 text-neutral-400 rounded whitespace-nowrap">Khuyên dùng</span>
                           </div>
                           <div className="text-[10px] text-neutral-400 mt-0.5 truncate">
@@ -1115,7 +1115,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     >
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold text-xs flex items-center gap-1.5 flex-wrap">
-                          <span>⚡ Tự động (HLS)</span>
+                          <span>Tự động (HLS)</span>
                           <span className="text-[9px] px-1.5 py-0.5 bg-neutral-800 text-neutral-400 rounded whitespace-nowrap">Khuyên dùng</span>
                         </div>
                         <div className="text-[10px] text-neutral-400 mt-0.5 truncate">

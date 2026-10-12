@@ -803,7 +803,7 @@ export default function App() {
                         : 'bg-neutral-950 hover:bg-neutral-800 text-neutral-300 border border-neutral-800'
                     }`}
                   >
-                    Tất cả ({totalSystemChannels})
+                    Tất cả ({totalSystemChannels.toLocaleString('vi-VN')})
                   </button>
                   <button
                     type="button"
@@ -811,14 +811,14 @@ export default function App() {
                       setStatusFilter('active');
                       loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current, 'active');
                     }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
                       statusFilter === 'active'
                         ? 'bg-emerald-600 text-white font-bold shadow'
                         : 'bg-neutral-950 hover:bg-neutral-800 text-emerald-400 border border-emerald-950'
                     }`}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    <span>🟢 Khả dụng ({onlineCount})</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span>Khả dụng ({onlineCount.toLocaleString('vi-VN')})</span>
                   </button>
                   <button
                     type="button"
@@ -826,14 +826,14 @@ export default function App() {
                       setStatusFilter('offline');
                       loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current, 'offline');
                     }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
                       statusFilter === 'offline'
                         ? 'bg-rose-600 text-white font-bold shadow'
                         : 'bg-neutral-950 hover:bg-neutral-800 text-rose-400 border border-rose-950'
                     }`}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                    <span>🔴 Không khả dụng ({offlineCount})</span>
+                    <span className="w-2 h-2 rounded-full bg-rose-400" />
+                    <span>Không khả dụng ({offlineCount.toLocaleString('vi-VN')})</span>
                   </button>
                 </div>
 
@@ -847,7 +847,7 @@ export default function App() {
                     title="Tự động kiểm tra từng luồng và đánh dấu offline các kênh hỏng"
                   >
                     <Activity className={`w-3.5 h-3.5 ${scanProgress?.isRunning ? 'animate-spin' : ''}`} />
-                    <span>{scanProgress?.isRunning ? 'Đang Rà Soát...' : '⚡ Quét Tính Khả Dụng'}</span>
+                    <span>{scanProgress?.isRunning ? 'Đang Rà Soát...' : 'Quét Tính Khả Dụng'}</span>
                   </button>
 
                   <button

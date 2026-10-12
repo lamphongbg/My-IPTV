@@ -4,6 +4,7 @@ import type { Channel } from '../src/types/iptv.js';
 import { parseM3U, generateM3U } from '../utils/m3uParser.js';
 import {
   getAllActiveChannels,
+  getAllChannelsAdmin,
   getChannelById as getChannelFromDb,
 } from '../src/db/storage.js';
 
@@ -52,6 +53,7 @@ export async function getAllGroups(): Promise<string[]> {
 router.get(['/api/groups', '/api/categories'], async (_req: Request, res: Response) => {
   try {
     const channels = await getAllActiveChannels();
+    const allChannels = await getAllChannelsAdmin();
     const groupsSet = new Set<string>();
     const counts: Record<string, number> = {};
 
@@ -62,14 +64,17 @@ router.get(['/api/groups', '/api/categories'], async (_req: Request, res: Respon
     }
 
     const groups = Array.from(groupsSet).sort((a, b) => a.localeCompare(b));
+    const offlineCount = allChannels.filter((c) => c.status === 'offline').length;
 
     res.json({
       groups,
       counts,
-      totalChannels: channels.length,
+      totalChannels: allChannels.length,
+      onlineChannels: channels.length,
+      offlineChannels: offlineCount,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message, groups: [], counts: {}, totalChannels: 0 });
+    res.status(500).json({ error: err.message, groups: [], counts: {}, totalChannels: 0, onlineChannels: 0, offlineChannels: 0 });
   }
 });
 

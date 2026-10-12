@@ -56,5 +56,6 @@ export interface AdminStats {
   activePlaylists: number;
   totalChannels: number;
   activeChannels: number;
+  offlineChannels?: number;
   groups: string[];
 }

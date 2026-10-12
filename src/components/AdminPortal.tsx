@@ -530,6 +530,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     return true;
   });
 
+  // Channel count statistics
+  const totalChannelsCount = channels.length;
+  const activeChannelsCount = channels.filter((c) => c.status !== 'offline').length;
+  const offlineChannelsCount = channels.filter((c) => c.status === 'offline').length;
+
   // Channel Pagination State
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(50);
@@ -713,7 +718,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-5 space-y-6">
         {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3.5 flex flex-col justify-between">
             <span className="text-[11px] text-neutral-400 uppercase tracking-wider font-semibold">Playlists</span>
             <div className="flex items-baseline gap-2 mt-1">
@@ -725,8 +730,32 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
           <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3.5 flex flex-col justify-between">
             <span className="text-[11px] text-neutral-400 uppercase tracking-wider font-semibold">Tổng số kênh</span>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-xl font-bold text-white">{stats?.totalChannels ?? channels.length}</span>
+              <span className="text-xl font-bold text-white">{totalChannelsCount.toLocaleString('vi-VN')}</span>
               <span className="text-xs text-neutral-400">kênh</span>
+            </div>
+          </div>
+
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3.5 flex flex-col justify-between">
+            <span className="text-[11px] text-emerald-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              Đang hoạt động
+            </span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-xl font-bold text-emerald-400">{activeChannelsCount.toLocaleString('vi-VN')}</span>
+              <span className="text-xs text-neutral-400">
+                ({totalChannelsCount > 0 ? ((activeChannelsCount / totalChannelsCount) * 100).toFixed(1) : 0}%)
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3.5 flex flex-col justify-between">
+            <span className="text-[11px] text-rose-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+              Không hoạt động
+            </span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-xl font-bold text-rose-400">{offlineChannelsCount.toLocaleString('vi-VN')}</span>
+              <span className="text-xs text-neutral-400">offline</span>
             </div>
           </div>
 
@@ -734,15 +763,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
             <span className="text-[11px] text-neutral-400 uppercase tracking-wider font-semibold">Danh mục</span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="text-xl font-bold text-white">{stats?.groups.length ?? 0}</span>
-              <span className="text-xs text-neutral-400">nhóm</span>
-            </div>
-          </div>
-
-          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3.5 flex flex-col justify-between">
-            <span className="text-[11px] text-neutral-400 uppercase tracking-wider font-semibold">Lưu trữ</span>
-            <div className="flex items-center gap-1.5 mt-1 text-xs font-medium text-amber-400">
-              <Database className="w-3.5 h-3.5" />
-              <span>PostgreSQL / Persistent</span>
+              <span className="text-xs text-neutral-400">thể loại</span>
             </div>
           </div>
         </div>
@@ -804,7 +825,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                 className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Thêm Playlist M3U</span>
+                <span>Thêm Playlist M3U</span>
               </button>
             </div>
 
@@ -826,7 +847,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                     {playlists.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="py-8 text-center text-neutral-500">
-                          Chưa có playlist nào. Hãy bấm "+ Thêm Playlist M3U" để bắt đầu.
+                          Chưa có playlist nào. Hãy bấm "Thêm Playlist M3U" để bắt đầu.
                         </td>
                       </tr>
                     ) : (
@@ -937,7 +958,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   <span>
                     {scanProgress?.isRunning
                       ? `Đang Quét (${scanProgress.scanned}/${scanProgress.total}) - Bấm Dừng`
-                      : '⚡ Quét Rà Soát Kênh'}
+                      : 'Quét Rà Soát Kênh'}
                   </span>
                 </button>
 
@@ -947,7 +968,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   title="Khôi phục trạng thái hoạt động cho toàn bộ kênh"
                 >
                   <RefreshCw className="w-3.5 h-3.5 text-neutral-400" />
-                  <span>↺ Khôi phục Active</span>
+                  <span>Khôi phục Active</span>
                 </button>
 
                 <button
@@ -966,9 +987,104 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>+ Thêm Kênh</span>
+                  <span>Thêm Kênh</span>
                 </button>
               </div>
+            </div>
+
+            {/* Khối thống kê chi tiết số lượng kênh trong danh sách */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-neutral-900/90 border border-neutral-800 rounded-2xl shadow-sm">
+              {/* Thẻ 1: Tổng số kênh */}
+              <button
+                type="button"
+                onClick={() => setFilterStatus('all')}
+                className={`p-3 rounded-xl border text-left transition flex items-center justify-between ${
+                  filterStatus === 'all'
+                    ? 'bg-neutral-800 border-amber-500/70 ring-1 ring-amber-500/30 shadow'
+                    : 'bg-neutral-950/70 border-neutral-800/80 hover:border-neutral-700'
+                }`}
+                title="Bấm để xem toàn bộ danh sách kênh"
+              >
+                <div>
+                  <span className="text-[11px] text-neutral-400 font-medium block">Tổng số kênh trong danh sách</span>
+                  <div className="flex items-baseline gap-1.5 mt-1">
+                    <span className="text-xl font-extrabold text-white tracking-tight">
+                      {totalChannelsCount.toLocaleString('vi-VN')}
+                    </span>
+                    <span className="text-xs text-neutral-400 font-medium">kênh</span>
+                  </div>
+                  <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                    {filterStatus === 'all' ? '● Đang hiển thị toàn bộ' : 'Bấm để lọc toàn bộ'}
+                  </span>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-neutral-800/90 border border-neutral-700/60 text-amber-400 flex items-center justify-center flex-shrink-0">
+                  <Tv className="w-4 h-4" />
+                </div>
+              </button>
+
+              {/* Thẻ 2: Kênh đang hoạt động */}
+              <button
+                type="button"
+                onClick={() => setFilterStatus('active')}
+                className={`p-3 rounded-xl border text-left transition flex items-center justify-between ${
+                  filterStatus === 'active'
+                    ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-500/30 shadow'
+                    : 'bg-neutral-950/70 border-neutral-800/80 hover:border-emerald-800/60'
+                }`}
+                title="Bấm để lọc chỉ các kênh đang hoạt động (Online)"
+              >
+                <div>
+                  <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    Kênh đang hoạt động (Online)
+                  </span>
+                  <div className="flex items-baseline gap-1.5 mt-1">
+                    <span className="text-xl font-extrabold text-emerald-300 tracking-tight">
+                      {activeChannelsCount.toLocaleString('vi-VN')}
+                    </span>
+                    <span className="text-xs text-emerald-400/80 font-medium">
+                      ({totalChannelsCount > 0 ? ((activeChannelsCount / totalChannelsCount) * 100).toFixed(1) : 0}%)
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                    {filterStatus === 'active' ? '● Đang lọc kênh Online' : 'Bấm để lọc kênh Online'}
+                  </span>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-emerald-950/80 border border-emerald-800/60 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle className="w-4 h-4" />
+                </div>
+              </button>
+
+              {/* Thẻ 3: Kênh không hoạt động */}
+              <button
+                type="button"
+                onClick={() => setFilterStatus('offline')}
+                className={`p-3 rounded-xl border text-left transition flex items-center justify-between ${
+                  filterStatus === 'offline'
+                    ? 'bg-rose-950/50 border-rose-500 ring-1 ring-rose-500/30 shadow'
+                    : 'bg-neutral-950/70 border-neutral-800/80 hover:border-rose-800/60'
+                }`}
+                title="Bấm để lọc chỉ các kênh không hoạt động (Offline)"
+              >
+                <div>
+                  <span className="text-[11px] text-rose-400 font-semibold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-400" />
+                    Kênh không hoạt động (Offline)
+                  </span>
+                  <div className="flex items-baseline gap-1.5 mt-1">
+                    <span className="text-xl font-extrabold text-rose-300 tracking-tight">
+                      {offlineChannelsCount.toLocaleString('vi-VN')}
+                    </span>
+                    <span className="text-xs text-rose-400/80 font-medium">kênh</span>
+                  </div>
+                  <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                    {filterStatus === 'offline' ? '● Đang lọc kênh Offline' : 'Bấm để lọc kênh Offline'}
+                  </span>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-rose-950/80 border border-rose-800/60 text-rose-400 flex items-center justify-center flex-shrink-0">
+                  <XCircle className="w-4 h-4" />
+                </div>
+              </button>
             </div>
 
             {/* Batch Scan Progress Banner */}
@@ -986,8 +1102,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <span className="text-emerald-400 font-medium">🟢 Online: {scanProgress.onlineCount}</span>
-                    <span className="text-rose-400 font-medium">🔴 Offline: {scanProgress.offlineCount}</span>
+                    <span className="text-emerald-400 font-medium">Online: {scanProgress.onlineCount}</span>
+                    <span className="text-rose-400 font-medium">Offline: {scanProgress.offlineCount}</span>
                     {scanProgress.isRunning && (
                       <button
                         onClick={handleStopBatchScan}
@@ -1033,9 +1149,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="bg-neutral-900 border border-neutral-800 text-neutral-300 rounded-xl px-3 py-2 text-xs focus:outline-none font-medium"
               >
-                <option value="all">Tất cả trạng thái ({channels.length})</option>
-                <option value="active">🟢 Khả dụng / Online ({channels.filter((c) => c.status === 'active').length})</option>
-                <option value="offline">🔴 Không khả dụng / Offline ({channels.filter((c) => c.status === 'offline').length})</option>
+                <option value="all">Tất cả ({totalChannelsCount.toLocaleString('vi-VN')})</option>
+                <option value="active">Đang hoạt động ({activeChannelsCount.toLocaleString('vi-VN')})</option>
+                <option value="offline">Không hoạt động ({offlineChannelsCount.toLocaleString('vi-VN')})</option>
               </select>
 
               <select
@@ -1065,10 +1181,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
               </select>
 
               <div className="flex items-center gap-1.5 px-3 py-2 bg-neutral-900 border border-neutral-800 text-neutral-300 rounded-xl text-xs font-mono ml-auto">
-                <span className="text-neutral-500">Trang:</span>
-                <span className="font-bold text-amber-400">{safeCurrentPage}</span>
+                <span className="text-neutral-500">Đang lọc:</span>
+                <span className="font-bold text-amber-400">{filteredChannels.length.toLocaleString('vi-VN')}</span>
                 <span className="text-neutral-600">/</span>
-                <span>{totalPages}</span>
+                <span>{totalChannelsCount.toLocaleString('vi-VN')}</span>
               </div>
             </div>
 
@@ -1224,8 +1340,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                 {/* Left: Summary */}
                 <div className="text-neutral-400 flex items-center gap-2">
                   <span>
-                    Hiển thị <strong className="text-white font-semibold">{filteredChannels.length === 0 ? 0 : (startIndex + 1).toLocaleString('vi-VN')} - {endIndex.toLocaleString('vi-VN')}</strong> trong tổng số{' '}
-                    <strong className="text-amber-400 font-semibold">{filteredChannels.length.toLocaleString('vi-VN')}</strong> kênh
+                    Hiển thị <strong className="text-white font-semibold">{filteredChannels.length === 0 ? 0 : (startIndex + 1).toLocaleString('vi-VN')} - {endIndex.toLocaleString('vi-VN')}</strong> trong{' '}
+                    <strong className="text-amber-400 font-semibold">{filteredChannels.length.toLocaleString('vi-VN')}</strong> kênh đang lọc{' '}
+                    (Toàn bộ danh sách: <strong className="text-white font-semibold">{totalChannelsCount.toLocaleString('vi-VN')}</strong> kênh &bull;{' '}
+                    <span className="text-emerald-400 font-medium">{activeChannelsCount.toLocaleString('vi-VN')} hoạt động</span> &bull;{' '}
+                    <span className="text-rose-400 font-medium">{offlineChannelsCount.toLocaleString('vi-VN')} không hoạt động</span>)
                   </span>
                 </div>
 
@@ -1762,7 +1881,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                 />
                 <div>
                   <div className="font-semibold text-xs text-emerald-400 flex items-center gap-1.5">
-                    <span>⚡ Quét trang hiện tại (Trang {safeCurrentPage})</span>
+                    <span>Quét trang hiện tại (Trang {safeCurrentPage})</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">Nhanh nhất</span>
                   </div>
                   <p className="text-[11px] text-neutral-400 mt-0.5">
@@ -1788,7 +1907,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                 />
                 <div>
                   <div className="font-semibold text-xs text-white">
-                    📂 Quét danh sách đang lọc ({filteredChannels.length.toLocaleString('vi-VN')} kênh)
+                    Quét danh sách đang lọc ({filteredChannels.length.toLocaleString('vi-VN')} kênh)
                   </div>
                   <p className="text-[11px] text-neutral-400 mt-0.5">
                     Quét tất cả các kênh thuộc nhóm hoặc từ khóa tìm kiếm đang chọn.
@@ -1813,7 +1932,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                 />
                 <div>
                   <div className="font-semibold text-xs text-white">
-                    🌐 Quét toàn bộ hệ thống ({channels.length.toLocaleString('vi-VN')} kênh)
+                    Quét toàn bộ hệ thống ({channels.length.toLocaleString('vi-VN')} kênh)
                   </div>
                   <p className="text-[11px] text-neutral-400 mt-0.5">
                     Tiến trình quét nền đa luồng. Có thể bấm dừng bất cứ lúc nào.
