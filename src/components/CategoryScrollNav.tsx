@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Layers, Star, History, Filter } from 'lucide-react';
 
 interface CategoryScrollNavProps {
@@ -24,6 +24,15 @@ export const CategoryScrollNav: React.FC<CategoryScrollNavProps> = ({
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
+  // Sort categories so lists with more channels are placed first / higher up
+  const sortedCategories = useMemo(() => {
+    return [...categories].sort((a, b) => {
+      const countDiff = (groupCounts?.[b] || 0) - (groupCounts?.[a] || 0);
+      if (countDiff !== 0) return countDiff;
+      return a.localeCompare(b);
+    });
+  }, [categories, groupCounts]);
+
   // Mouse drag-to-scroll state
   const isDraggingRef = useRef(false);
   const startXRef = useRef(0);
@@ -47,7 +56,7 @@ export const CategoryScrollNav: React.FC<CategoryScrollNavProps> = ({
     const handleResize = () => checkScrollPosition();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [categories]);
+  }, [sortedCategories]);
 
   // Scroll smoothly by delta
   const handleScrollBy = (distance: number) => {
@@ -129,7 +138,7 @@ export const CategoryScrollNav: React.FC<CategoryScrollNavProps> = ({
             <option value="all">Tất cả kênh ({totalChannels})</option>
             {favoritesCount > 0 && <option value="favorites">★ Yêu thích ({favoritesCount})</option>}
             {recentCount > 0 && <option value="recent">⏱ Gần đây ({recentCount})</option>}
-            {categories.map((cat) => (
+            {sortedCategories.map((cat) => (
               <option key={cat} value={cat}>
                 {cat} {groupCounts?.[cat] ? `(${groupCounts[cat]})` : ''}
               </option>
@@ -215,7 +224,7 @@ export const CategoryScrollNav: React.FC<CategoryScrollNavProps> = ({
           )}
 
           {/* Dynamic Categories Pills */}
-          {categories.map((cat) => (
+          {sortedCategories.map((cat) => (
             <button
               key={cat}
               type="button"

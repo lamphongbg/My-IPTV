@@ -5,8 +5,16 @@ import { parseM3U, generateM3U } from '../utils/m3uParser.js';
 import {
   getAllActiveChannels,
   getAllChannelsAdmin,
+  getPlaylists,
+  updateChannel,
   getChannelById as getChannelFromDb,
 } from '../src/db/storage.js';
+import {
+  startBatchScan,
+  stopBatchScan,
+  getScanProgress,
+  scanSingleChannel,
+} from '../src/services/channelScanner.js';
 
 const router = Router();
 
@@ -43,57 +51,112 @@ export async function getChannelById(id: string): Promise<Channel | null> {
 export async function getAllGroups(): Promise<string[]> {
   const channels = await getAllActiveChannels();
   const groupsSet = new Set<string>();
+  const counts: Record<string, number> = {};
   for (const c of channels) {
-    if (c.group && c.group.trim()) groupsSet.add(c.group.trim());
+    if (c.group && c.group.trim()) {
+      const g = c.group.trim();
+      groupsSet.add(g);
+      counts[g] = (counts[g] || 0) + 1;
+    }
   }
-  return Array.from(groupsSet);
+  return Array.from(groupsSet).sort((a, b) => {
+    const diff = (counts[b] || 0) - (counts[a] || 0);
+    if (diff !== 0) return diff;
+    return a.localeCompare(b);
+  });
 }
 
 // API: Get groups/categories list with channel counts
 router.get(['/api/groups', '/api/categories'], async (_req: Request, res: Response) => {
   try {
-    const channels = await getAllActiveChannels();
-    const allChannels = await getAllChannelsAdmin();
+    const playlists = await getPlaylists();
+    const enabledPlaylistIds = new Set(playlists.filter((p) => p.enabled).map((p) => p.id));
+    const allChannels = (await getAllChannelsAdmin()).filter(
+      (c) => !c.playlist_id || enabledPlaylistIds.size === 0 || enabledPlaylistIds.has(c.playlist_id)
+    );
+
     const groupsSet = new Set<string>();
     const counts: Record<string, number> = {};
+    const activeCounts: Record<string, number> = {};
+    const offlineCounts: Record<string, number> = {};
 
-    for (const c of channels) {
+    let totalOnline = 0;
+    let totalOffline = 0;
+
+    for (const c of allChannels) {
       const g = (c.group && c.group.trim()) || 'Khác';
       groupsSet.add(g);
       counts[g] = (counts[g] || 0) + 1;
+      if (c.status === 'offline') {
+        offlineCounts[g] = (offlineCounts[g] || 0) + 1;
+        totalOffline++;
+      } else {
+        activeCounts[g] = (activeCounts[g] || 0) + 1;
+        totalOnline++;
+      }
     }
 
-    const groups = Array.from(groupsSet).sort((a, b) => a.localeCompare(b));
-    const offlineCount = allChannels.filter((c) => c.status === 'offline').length;
+    // Sort groups so that lists with the most channels appear first / on top
+    const groups = Array.from(groupsSet).sort((a, b) => {
+      const countDiff = (counts[b] || 0) - (counts[a] || 0);
+      if (countDiff !== 0) return countDiff;
+      return a.localeCompare(b);
+    });
 
     res.json({
       groups,
       counts,
+      activeCounts,
+      offlineCounts,
       totalChannels: allChannels.length,
-      onlineChannels: channels.length,
-      offlineChannels: offlineCount,
+      onlineChannels: totalOnline,
+      offlineChannels: totalOffline,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message, groups: [], counts: {}, totalChannels: 0, onlineChannels: 0, offlineChannels: 0 });
+    res.status(500).json({
+      error: err.message,
+      groups: [],
+      counts: {},
+      activeCounts: {},
+      offlineCounts: {},
+      totalChannels: 0,
+      onlineChannels: 0,
+      offlineChannels: 0,
+    });
   }
 });
 
-// API: Get channels with server-side search, group filtering, and pagination
+// API: Get channels with server-side search, group filtering, status filtering, and pagination
 router.get('/api/channels', async (req: Request, res: Response) => {
   try {
-    const { q, group, page, limit } = req.query;
-    let result = await getAllActiveChannels();
+    const { q, group, page, limit, status } = req.query;
+    const playlists = await getPlaylists();
+    const enabledPlaylistIds = new Set(playlists.filter((p) => p.enabled).map((p) => p.id));
+    const allChannels = (await getAllChannelsAdmin()).filter(
+      (c) => !c.playlist_id || enabledPlaylistIds.size === 0 || enabledPlaylistIds.has(c.playlist_id)
+    );
 
-    // 1. Group filter
+    const totalSystemChannels = allChannels.length;
+    const totalSystemOnline = allChannels.filter((c) => c.status !== 'offline').length;
+    const totalSystemOffline = allChannels.filter((c) => c.status === 'offline').length;
+
+    // 1. Group / List Scope
+    let scoped = allChannels;
     if (typeof group === 'string' && group !== 'all' && group.trim()) {
       const gLower = group.toLowerCase().trim();
-      result = result.filter((c) => c.group && c.group.toLowerCase().trim() === gLower);
+      scoped = scoped.filter((c) => c.group && c.group.toLowerCase().trim() === gLower);
     }
 
+    // Exact counts for the currently selected list / group
+    const scopeTotal = scoped.length;
+    const scopeOnline = scoped.filter((c) => c.status !== 'offline').length;
+    const scopeOffline = scoped.filter((c) => c.status === 'offline').length;
+
     // 2. Search query filter
+    let filtered = scoped;
     if (typeof q === 'string' && q.trim()) {
       const query = q.toLowerCase().trim();
-      result = result.filter(
+      filtered = filtered.filter(
         (c) =>
           (c.name && c.name.toLowerCase().includes(query)) ||
           (c.group && c.group.toLowerCase().includes(query)) ||
@@ -102,7 +165,37 @@ router.get('/api/channels', async (req: Request, res: Response) => {
       );
     }
 
-    const total = result.length;
+    const queryTotal = filtered.length;
+    const queryOnline = filtered.filter((c) => c.status !== 'offline').length;
+    const queryOffline = filtered.filter((c) => c.status === 'offline').length;
+
+    // 3. Status filter
+    const statusParam = typeof status === 'string' ? status.toLowerCase().trim() : 'all';
+    if (statusParam === 'active') {
+      filtered = filtered.filter((c) => c.status !== 'offline');
+    } else if (statusParam === 'offline') {
+      filtered = filtered.filter((c) => c.status === 'offline');
+    }
+
+    const total = filtered.length;
+
+    const countsPayload = {
+      scopeCounts: {
+        total: scopeTotal,
+        online: scopeOnline,
+        offline: scopeOffline,
+      },
+      queryCounts: {
+        total: queryTotal,
+        online: queryOnline,
+        offline: queryOffline,
+      },
+      globalCounts: {
+        total: totalSystemChannels,
+        online: totalSystemOnline,
+        offline: totalSystemOffline,
+      },
+    };
 
     // Handle limit: support limit=all or numeric limit
     if (limit === 'all' || limit === '0') {
@@ -111,7 +204,8 @@ router.get('/api/channels', async (req: Request, res: Response) => {
         page: 1,
         limit: total,
         totalPages: 1,
-        channels: result,
+        channels: filtered,
+        ...countsPayload,
       });
     }
 
@@ -119,7 +213,7 @@ router.get('/api/channels', async (req: Request, res: Response) => {
     const limitNum = Math.max(1, Math.min(500, parseInt(limit as string, 10) || 60)); // Default 60 items per page
     const totalPages = Math.ceil(total / limitNum) || 1;
     const startIndex = (pageNum - 1) * limitNum;
-    const paginated = result.slice(startIndex, startIndex + limitNum);
+    const paginated = filtered.slice(startIndex, startIndex + limitNum);
 
     res.json({
       total,
@@ -127,7 +221,63 @@ router.get('/api/channels', async (req: Request, res: Response) => {
       limit: limitNum,
       totalPages,
       channels: paginated,
+      ...countsPayload,
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Batch & Single channel scan endpoints for main app
+router.post('/api/channels/scan-all', async (req: Request, res: Response) => {
+  try {
+    const concurrency = parseInt(req.body.concurrency as string, 10) || 8;
+    const channelIds = Array.isArray(req.body.channelIds) ? req.body.channelIds : undefined;
+    const group = typeof req.body.group === 'string' ? req.body.group : undefined;
+    const scopeDescription = typeof req.body.scopeDescription === 'string' ? req.body.scopeDescription : undefined;
+
+    await startBatchScan({
+      concurrency,
+      channelIds,
+      group,
+      scopeDescription,
+    });
+    res.json({ success: true, message: 'Đã bắt đầu tiến trình quét kênh', progress: getScanProgress() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/api/channels/scan-status', (_req: Request, res: Response) => {
+  res.json(getScanProgress());
+});
+
+router.post('/api/channels/scan-stop', (_req: Request, res: Response) => {
+  stopBatchScan();
+  res.json({ success: true, message: 'Đã dừng tiến trình quét', progress: getScanProgress() });
+});
+
+router.post('/api/channels/:id/scan', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const channel = await getChannelFromDb(id);
+    if (!channel) {
+      return res.status(404).json({ error: 'Không tìm thấy kênh để quét.' });
+    }
+    const result = await scanSingleChannel(channel);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/api/channels/reset-status', async (_req: Request, res: Response) => {
+  try {
+    const channels = await getAllChannelsAdmin();
+    for (const ch of channels) {
+      await updateChannel(ch.id, { status: 'active' });
+    }
+    res.json({ success: true, message: `Đã khôi phục trạng thái cho ${channels.length} kênh.` });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

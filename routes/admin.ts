@@ -77,7 +77,13 @@ router.use('/api/admin', requireAdminAuth);
 router.get('/api/admin/playlists', async (_req: Request, res: Response) => {
   try {
     const playlists = await getPlaylists();
-    res.json(playlists);
+    // Sort playlists with most channels first
+    const sorted = [...playlists].sort((a, b) => {
+      const diff = (b.channel_count || 0) - (a.channel_count || 0);
+      if (diff !== 0) return diff;
+      return a.name.localeCompare(b.name);
+    });
+    res.json(sorted);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -334,10 +340,15 @@ router.get('/api/admin/stats', async (_req: Request, res: Response) => {
     const channels = await getAllChannelsAdmin();
 
     const groupsSet = new Set<string>();
+    const groupCounts: Record<string, number> = {};
     let activeChannels = 0;
     let offlineChannels = 0;
     for (const c of channels) {
-      if (c.group) groupsSet.add(c.group);
+      if (c.group && c.group.trim()) {
+        const g = c.group.trim();
+        groupsSet.add(g);
+        groupCounts[g] = (groupCounts[g] || 0) + 1;
+      }
       if (c.status === 'offline') {
         offlineChannels++;
       } else {
@@ -345,13 +356,19 @@ router.get('/api/admin/stats', async (_req: Request, res: Response) => {
       }
     }
 
+    const sortedGroups = Array.from(groupsSet).sort((a, b) => {
+      const diff = (groupCounts[b] || 0) - (groupCounts[a] || 0);
+      if (diff !== 0) return diff;
+      return a.localeCompare(b);
+    });
+
     res.json({
       totalPlaylists: playlists.length,
       activePlaylists: playlists.filter((p) => p.enabled).length,
       totalChannels: channels.length,
       activeChannels,
       offlineChannels,
-      groups: Array.from(groupsSet),
+      groups: sortedGroups,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

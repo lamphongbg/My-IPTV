@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { Channel, DeviceInfo } from './types/iptv';
 import { VideoPlayer } from './components/VideoPlayer';
 import { ChannelCard } from './components/ChannelCard';
@@ -70,6 +70,15 @@ export default function App() {
   const [onlineCount, setOnlineCount] = useState<number>(0);
   const [offlineCount, setOfflineCount] = useState<number>(0);
 
+  // List-specific breakdowns & scope counts
+  const [groupActiveCounts, setGroupActiveCounts] = useState<Record<string, number>>({});
+  const [groupOfflineCounts, setGroupOfflineCounts] = useState<Record<string, number>>({});
+  const [currentScopeCounts, setCurrentScopeCounts] = useState<{ total: number; online: number; offline: number } | null>(null);
+  const [favoritesActiveCount, setFavoritesActiveCount] = useState<number>(0);
+  const [favoritesOfflineCount, setFavoritesOfflineCount] = useState<number>(0);
+  const [recentActiveCount, setRecentActiveCount] = useState<number>(0);
+  const [recentOfflineCount, setRecentOfflineCount] = useState<number>(0);
+
   // Background Batch Channel Scanner state
   const [scanProgress, setScanProgress] = useState<{
     isRunning: boolean;
@@ -91,6 +100,31 @@ export default function App() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
+
+  // Accurately compute channel counts for the currently selected list / group
+  const displayedListTotal = useMemo(() => {
+    if (activeGroup === 'all') return totalSystemChannels;
+    if (activeGroup === 'favorites') return favorites.length;
+    if (activeGroup === 'recent') return recentIds.length;
+    if (currentScopeCounts && activeGroup !== 'all') return currentScopeCounts.total;
+    return groupCounts[activeGroup] ?? 0;
+  }, [activeGroup, totalSystemChannels, favorites.length, recentIds.length, currentScopeCounts, groupCounts]);
+
+  const displayedListOnline = useMemo(() => {
+    if (activeGroup === 'all') return onlineCount;
+    if (activeGroup === 'favorites') return favoritesActiveCount;
+    if (activeGroup === 'recent') return recentActiveCount;
+    if (currentScopeCounts && activeGroup !== 'all') return currentScopeCounts.online;
+    return groupActiveCounts[activeGroup] ?? 0;
+  }, [activeGroup, onlineCount, favoritesActiveCount, recentActiveCount, currentScopeCounts, groupActiveCounts]);
+
+  const displayedListOffline = useMemo(() => {
+    if (activeGroup === 'all') return offlineCount;
+    if (activeGroup === 'favorites') return favoritesOfflineCount;
+    if (activeGroup === 'recent') return recentOfflineCount;
+    if (currentScopeCounts && activeGroup !== 'all') return currentScopeCounts.offline;
+    return groupOfflineCounts[activeGroup] ?? 0;
+  }, [activeGroup, offlineCount, favoritesOfflineCount, recentOfflineCount, currentScopeCounts, groupOfflineCounts]);
 
   // Keep stable refs so loadChannels never re-creates or re-fetches when user selects a channel
   const favoritesRef = useRef<string[]>(favorites);
@@ -158,10 +192,19 @@ export default function App() {
         const ct = groupsRes.headers.get('content-type') || '';
         if (ct.includes('application/json')) {
           const gData = await groupsRes.json();
-          setCategories(gData.groups || []);
-          setGroupCounts(gData.counts || {});
+          const grps: string[] = gData.groups || [];
+          const cnts: Record<string, number> = gData.counts || {};
+          grps.sort((a, b) => {
+            const countDiff = (cnts[b] || 0) - (cnts[a] || 0);
+            if (countDiff !== 0) return countDiff;
+            return a.localeCompare(b);
+          });
+          setCategories(grps);
+          setGroupCounts(cnts);
+          setGroupActiveCounts(gData.activeCounts || {});
+          setGroupOfflineCounts(gData.offlineCounts || {});
           setTotalSystemChannels(gData.totalChannels || 0);
-          setOnlineCount(gData.onlineChannels ?? gData.totalChannels ?? 0);
+          setOnlineCount(gData.onlineChannels ?? 0);
           setOfflineCount(gData.offlineChannels ?? 0);
         }
       }
@@ -213,8 +256,22 @@ export default function App() {
             const data = await res.json();
             const allItems: Channel[] = data.channels || [];
             const targetIds = group === 'favorites' ? favoritesRef.current : recentIdsRef.current;
-            let filtered = allItems.filter((c) => targetIds.includes(c.id));
+            const targetItems = allItems.filter((c) => targetIds.includes(c.id));
 
+            const itemTotal = targetItems.length;
+            const itemOnline = targetItems.filter((c) => c.status !== 'offline').length;
+            const itemOffline = targetItems.filter((c) => c.status === 'offline').length;
+
+            if (group === 'favorites') {
+              setFavoritesActiveCount(itemOnline);
+              setFavoritesOfflineCount(itemOffline);
+            } else {
+              setRecentActiveCount(itemOnline);
+              setRecentOfflineCount(itemOffline);
+            }
+            setCurrentScopeCounts({ total: itemTotal, online: itemOnline, offline: itemOffline });
+
+            let filtered = targetItems;
             if (currentStatus === 'active') {
               filtered = filtered.filter((c) => c.status !== 'offline');
             } else if (currentStatus === 'offline') {
@@ -241,8 +298,11 @@ export default function App() {
             setTotalMatching(total);
             setCurrentPage(validPage);
             setTotalPages(computedPages);
-            if (data.onlineCount !== undefined) setOnlineCount(data.onlineCount);
-            if (data.offlineCount !== undefined) setOfflineCount(data.offlineCount);
+            if (data.globalCounts) {
+              setOnlineCount(data.globalCounts.online);
+              setOfflineCount(data.globalCounts.offline);
+              setTotalSystemChannels(data.globalCounts.total);
+            }
 
             setSelectedChannel((prev) => prev ? prev : (paginated.length > 0 ? paginated[0] : null));
           }
@@ -272,8 +332,14 @@ export default function App() {
           setTotalMatching(data.total || 0);
           setCurrentPage(data.page || 1);
           setTotalPages(data.totalPages || 1);
-          if (data.onlineCount !== undefined) setOnlineCount(data.onlineCount);
-          if (data.offlineCount !== undefined) setOfflineCount(data.offlineCount);
+          if (data.scopeCounts) {
+            setCurrentScopeCounts(data.scopeCounts);
+          }
+          if (data.globalCounts) {
+            setOnlineCount(data.globalCounts.online);
+            setOfflineCount(data.globalCounts.offline);
+            setTotalSystemChannels(data.globalCounts.total);
+          }
 
           setSelectedChannel((prev) => prev ? prev : (newChannels.length > 0 ? newChannels[0] : null));
         }
@@ -318,10 +384,15 @@ export default function App() {
     if (scanProgress?.isRunning || isStartingScan) return;
     setIsStartingScan(true);
     try {
+      const isSpecificGroup = activeGroup !== 'all' && activeGroup !== 'favorites' && activeGroup !== 'recent';
       const res = await fetch('/api/channels/scan-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ concurrency: 6 }),
+        body: JSON.stringify({
+          concurrency: 6,
+          group: isSpecificGroup ? activeGroup : undefined,
+          scopeDescription: isSpecificGroup ? `Quét list "${activeGroup}" (${displayedListTotal} kênh)` : undefined,
+        }),
       });
       const data = await res.json();
       if (data.progress) {
@@ -802,8 +873,9 @@ export default function App() {
                         ? 'bg-amber-500 text-neutral-950 font-bold shadow'
                         : 'bg-neutral-950 hover:bg-neutral-800 text-neutral-300 border border-neutral-800'
                     }`}
+                    title={`Tất cả ${displayedListTotal.toLocaleString('vi-VN')} kênh trong ${activeGroup === 'all' ? 'toàn bộ hệ thống' : `list "${activeGroup}"`}`}
                   >
-                    Tất cả ({totalSystemChannels.toLocaleString('vi-VN')})
+                    Tất cả ({displayedListTotal.toLocaleString('vi-VN')})
                   </button>
                   <button
                     type="button"
@@ -816,9 +888,10 @@ export default function App() {
                         ? 'bg-emerald-600 text-white font-bold shadow'
                         : 'bg-neutral-950 hover:bg-neutral-800 text-emerald-400 border border-emerald-950'
                     }`}
+                    title={`${displayedListOnline.toLocaleString('vi-VN')} kênh khả dụng trong ${activeGroup === 'all' ? 'toàn bộ hệ thống' : `list "${activeGroup}"`}`}
                   >
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span>Khả dụng ({onlineCount.toLocaleString('vi-VN')})</span>
+                    <span>Khả dụng ({displayedListOnline.toLocaleString('vi-VN')})</span>
                   </button>
                   <button
                     type="button"
@@ -831,9 +904,10 @@ export default function App() {
                         ? 'bg-rose-600 text-white font-bold shadow'
                         : 'bg-neutral-950 hover:bg-neutral-800 text-rose-400 border border-rose-950'
                     }`}
+                    title={`${displayedListOffline.toLocaleString('vi-VN')} kênh không khả dụng trong ${activeGroup === 'all' ? 'toàn bộ hệ thống' : `list "${activeGroup}"`}`}
                   >
                     <span className="w-2 h-2 rounded-full bg-rose-400" />
-                    <span>Không khả dụng ({offlineCount.toLocaleString('vi-VN')})</span>
+                    <span>Không khả dụng ({displayedListOffline.toLocaleString('vi-VN')})</span>
                   </button>
                 </div>
 
@@ -844,7 +918,11 @@ export default function App() {
                     onClick={handleStartBatchScan}
                     disabled={scanProgress?.isRunning || isStartingScan}
                     className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 transition shadow"
-                    title="Tự động kiểm tra từng luồng và đánh dấu offline các kênh hỏng"
+                    title={
+                      activeGroup !== 'all' && activeGroup !== 'favorites' && activeGroup !== 'recent'
+                        ? `Tự động kiểm tra ${displayedListTotal} kênh trong list "${activeGroup}"`
+                        : 'Tự động kiểm tra từng luồng và đánh dấu offline các kênh hỏng'
+                    }
                   >
                     <Activity className={`w-3.5 h-3.5 ${scanProgress?.isRunning ? 'animate-spin' : ''}`} />
                     <span>{scanProgress?.isRunning ? 'Đang Rà Soát...' : 'Quét Tính Khả Dụng'}</span>
@@ -912,15 +990,18 @@ export default function App() {
                 <span>
                   {activeGroup !== 'all' ? (
                     <>
-                      Đang lọc: <strong className="text-amber-400">{activeGroup}</strong>
+                      Đang lọc list: <strong className="text-amber-400">{activeGroup}</strong> ({displayedListTotal.toLocaleString('vi-VN')} kênh)
                     </>
                   ) : (
-                    <span>Tất cả kênh</span>
+                    <span>Tất cả kênh ({totalSystemChannels.toLocaleString('vi-VN')} kênh)</span>
                   )}
                   {statusFilter !== 'all' && (
                     <>
-                      {' '}&bull; Trạng thái: <strong className={statusFilter === 'active' ? 'text-emerald-400' : 'text-rose-400'}>
-                        {statusFilter === 'active' ? 'Khả dụng' : 'Không khả dụng'}
+                      {' '}&bull; Trạng thái:{' '}
+                      <strong className={statusFilter === 'active' ? 'text-emerald-400' : 'text-rose-400'}>
+                        {statusFilter === 'active'
+                          ? `Khả dụng (${displayedListOnline.toLocaleString('vi-VN')})`
+                          : `Không khả dụng (${displayedListOffline.toLocaleString('vi-VN')})`}
                       </strong>
                     </>
                   )}
@@ -929,7 +1010,7 @@ export default function App() {
                       {' '}&bull; Từ khóa: <strong className="text-white">"{debouncedQuery}"</strong>
                     </>
                   )}
-                  {' '}&bull; Tìm thấy: <strong className="text-emerald-400">{totalMatching.toLocaleString()} kênh</strong>
+                  {' '}&bull; Tìm thấy: <strong className="text-emerald-400">{totalMatching.toLocaleString('vi-VN')} kênh</strong>
                 </span>
 
                 {(activeGroup !== 'all' || debouncedQuery || statusFilter !== 'all') && (

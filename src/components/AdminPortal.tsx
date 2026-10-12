@@ -199,7 +199,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
       }
 
       if (statsRes.ok) setStats(await statsRes.json());
-      if (playlistsRes.ok) setPlaylists(await playlistsRes.json());
+      if (playlistsRes.ok) {
+        const rawPls = await playlistsRes.json();
+        const sortedPls = Array.isArray(rawPls)
+          ? [...rawPls].sort((a, b) => {
+              const diff = (b.channel_count || 0) - (a.channel_count || 0);
+              if (diff !== 0) return diff;
+              return a.name.localeCompare(b.name);
+            })
+          : [];
+        setPlaylists(sortedPls);
+      }
       if (channelsRes.ok) setChannels(await channelsRes.json());
     } catch (err) {
       console.error('Error fetching admin data:', err);
