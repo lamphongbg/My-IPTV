@@ -447,19 +447,6 @@ export default function App() {
     }
   };
 
-  const handleResetAllStatus = async () => {
-    if (!window.confirm('Khôi phục tất cả các kênh về trạng thái Khả Dụng (Active)?')) return;
-    try {
-      const res = await fetch('/api/channels/reset-status', { method: 'POST' });
-      if (res.ok) {
-        fetchMetadata();
-        loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current, 'all');
-      }
-    } catch (err) {
-      console.error('Lỗi khôi phục trạng thái:', err);
-    }
-  };
-
   // Change page size (fixed 50 or 100 channels per page)
   const handleChangePageSize = (newSize: number) => {
     setPageSize(newSize);
@@ -926,15 +913,6 @@ export default function App() {
                   >
                     <Activity className={`w-3.5 h-3.5 ${scanProgress?.isRunning ? 'animate-spin' : ''}`} />
                     <span>{scanProgress?.isRunning ? 'Đang Rà Soát...' : 'Quét Tính Khả Dụng'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleResetAllStatus}
-                    className="p-1.5 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded-lg border border-neutral-800 transition"
-                    title="Khôi phục toàn bộ kênh về trạng thái Khả Dụng"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>

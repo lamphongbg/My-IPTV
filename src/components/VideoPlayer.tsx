@@ -1192,6 +1192,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
           <button
             type="button"
+            onClick={handleRetry}
+            className="px-2.5 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs flex items-center gap-1.5 border border-neutral-700 transition hover:border-amber-500/50"
+            title="Tải lại luồng phát video (khởi động lại stream nếu bị giật, đứng hình)"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isLoading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline font-medium">Tải lại</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleToggleMute}
             className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs border border-neutral-700 transition"
             title={isMuted ? 'Bật âm thanh' : 'Tắt tiếng'}
