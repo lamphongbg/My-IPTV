@@ -63,6 +63,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     provider: 'postgres_pool' | 'supabase_api' | 'local_fallback';
     connected: boolean;
     channelCount: number;
+    onlineCount?: number;
+    offlineCount?: number;
     playlistCount: number;
     pingMs?: number;
     error?: string;
@@ -1801,10 +1803,40 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   </span>
                   <span className="text-xs text-neutral-400">kênh trên Supabase</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs pt-1 border-t border-neutral-800/60 text-neutral-400">
+
+                {/* Chi tiết kênh khả dụng (Online) và không khả dụng (Offline) trên Supabase */}
+                <div className="flex items-center gap-3 text-xs pt-1 border-t border-neutral-800/60">
+                  {supabaseStatus?.connected && (supabaseStatus?.channelCount ?? 0) > 0 ? (
+                    (() => {
+                      const cloudTotal = supabaseStatus.channelCount;
+                      const cloudOnline = supabaseStatus.onlineCount ?? activeChannelsCount;
+                      const cloudOffline = supabaseStatus.offlineCount ?? offlineChannelsCount;
+                      const percent = cloudTotal > 0 ? ((cloudOnline / cloudTotal) * 100).toFixed(1) : '0';
+                      return (
+                        <>
+                          <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                            {cloudOnline.toLocaleString('vi-VN')} Online ({percent}%)
+                          </span>
+                          <span className="text-neutral-500">•</span>
+                          <span className="text-rose-400 font-semibold flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-rose-400" />
+                            {cloudOffline.toLocaleString('vi-VN')} Offline
+                          </span>
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <span className="text-neutral-500 italic text-[11px]">
+                      {supabaseStatus?.connected ? 'Chưa có kênh nào trên Supabase' : 'Chưa kết nối database'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Thông tin phụ: Playlist & Trạng thái bảo vệ Render */}
+                <div className="flex items-center justify-between text-[11px] pt-1 text-neutral-400 border-t border-neutral-800/40">
                   <span>Playlist: <strong className="text-white">{supabaseStatus?.playlistCount ?? playlists.length}</strong></span>
-                  <span>•</span>
-                  <span>Bảo lưu Render: <strong className={supabaseStatus?.connected ? 'text-emerald-400' : 'text-amber-400'}>{supabaseStatus?.connected ? 'Được bảo vệ' : 'Chưa bảo vệ'}</strong></span>
+                  <span>Bảo lưu Render: <strong className={supabaseStatus?.connected ? 'text-emerald-400 font-medium' : 'text-amber-400'}>{supabaseStatus?.connected ? 'Được bảo vệ' : 'Chưa bảo vệ'}</strong></span>
                 </div>
               </div>
             </div>

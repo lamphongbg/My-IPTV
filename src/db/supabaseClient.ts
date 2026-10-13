@@ -9,6 +9,8 @@ export interface CloudStorageStatus {
   provider: 'postgres_pool' | 'supabase_api' | 'local_fallback';
   connected: boolean;
   channelCount: number;
+  onlineCount?: number;
+  offlineCount?: number;
   playlistCount: number;
   pingMs?: number;
   error?: string;
@@ -62,13 +64,17 @@ export async function initCloudDatabase(): Promise<CloudStorageStatus> {
       // Ensure tables & indexes exist
       await initPostgresSchema(pgPool);
 
-      const [pCountRes, cCountRes] = await Promise.all([
+      const [pCountRes, cCountRes, onlineRes, offlineRes] = await Promise.all([
         pgPool.query('SELECT COUNT(*)::int as count FROM playlists'),
         pgPool.query('SELECT COUNT(*)::int as count FROM channels'),
+        pgPool.query("SELECT COUNT(*)::int as count FROM channels WHERE status != 'offline'"),
+        pgPool.query("SELECT COUNT(*)::int as count FROM channels WHERE status = 'offline'"),
       ]);
 
       const playlistCount = pCountRes.rows[0]?.count || 0;
       const channelCount = cCountRes.rows[0]?.count || 0;
+      const onlineCount = onlineRes.rows[0]?.count || 0;
+      const offlineCount = offlineRes.rows[0]?.count || 0;
 
       // Mask URL for display
       const masked = databaseUrl.replace(/:([^:@]+)@/, ':***@');
@@ -78,6 +84,8 @@ export async function initCloudDatabase(): Promise<CloudStorageStatus> {
         provider: 'postgres_pool',
         connected: true,
         channelCount,
+        onlineCount,
+        offlineCount,
         playlistCount,
         pingMs,
         configUrlMasked: masked,
@@ -99,20 +107,18 @@ export async function initCloudDatabase(): Promise<CloudStorageStatus> {
       }
 
       const startTime = Date.now();
-      const { count: pCount, error: pErr } = await supabaseClient
-        .from('playlists')
-        .select('*', { count: 'exact', head: true });
+      const [pRes, cRes, onlineRes, offlineRes] = await Promise.all([
+        supabaseClient.from('playlists').select('*', { count: 'exact', head: true }),
+        supabaseClient.from('channels').select('*', { count: 'exact', head: true }),
+        supabaseClient.from('channels').select('*', { count: 'exact', head: true }).neq('status', 'offline'),
+        supabaseClient.from('channels').select('*', { count: 'exact', head: true }).eq('status', 'offline'),
+      ]);
 
-      if (pErr && pErr.code !== 'PGRST116') {
-        throw new Error(pErr.message);
+      if (pRes.error && pRes.error.code !== 'PGRST116') {
+        throw new Error(pRes.error.message);
       }
-
-      const { count: cCount, error: cErr } = await supabaseClient
-        .from('channels')
-        .select('*', { count: 'exact', head: true });
-
-      if (cErr && cErr.code !== 'PGRST116') {
-        throw new Error(cErr.message);
+      if (cRes.error && cRes.error.code !== 'PGRST116') {
+        throw new Error(cRes.error.message);
       }
 
       const pingMs = Date.now() - startTime;
@@ -123,8 +129,10 @@ export async function initCloudDatabase(): Promise<CloudStorageStatus> {
         enabled: true,
         provider: 'supabase_api',
         connected: true,
-        channelCount: cCount || 0,
-        playlistCount: pCount || 0,
+        channelCount: cRes.count || 0,
+        onlineCount: onlineRes.count ?? (cRes.count || 0),
+        offlineCount: offlineRes.count ?? 0,
+        playlistCount: pRes.count || 0,
         pingMs,
         configUrlMasked: supabaseUrl,
       };
@@ -159,23 +167,29 @@ export async function getCloudStorageStatus(): Promise<CloudStorageStatus> {
   if (lastStatus.connected) {
     if (pgPool) {
       try {
-        const [pCountRes, cCountRes] = await Promise.all([
+        const [pCountRes, cCountRes, onlineRes, offlineRes] = await Promise.all([
           pgPool.query('SELECT COUNT(*)::int as count FROM playlists'),
           pgPool.query('SELECT COUNT(*)::int as count FROM channels'),
+          pgPool.query("SELECT COUNT(*)::int as count FROM channels WHERE status != 'offline'"),
+          pgPool.query("SELECT COUNT(*)::int as count FROM channels WHERE status = 'offline'"),
         ]);
         lastStatus.playlistCount = pCountRes.rows[0]?.count || 0;
         lastStatus.channelCount = cCountRes.rows[0]?.count || 0;
+        lastStatus.onlineCount = onlineRes.rows[0]?.count || 0;
+        lastStatus.offlineCount = offlineRes.rows[0]?.count || 0;
       } catch {}
     } else if (supabaseClient) {
       try {
-        const { count: cCount } = await supabaseClient
-          .from('channels')
-          .select('*', { count: 'exact', head: true });
-        const { count: pCount } = await supabaseClient
-          .from('playlists')
-          .select('*', { count: 'exact', head: true });
-        if (cCount !== null) lastStatus.channelCount = cCount;
-        if (pCount !== null) lastStatus.playlistCount = pCount;
+        const [pRes, cRes, onlineRes, offlineRes] = await Promise.all([
+          supabaseClient.from('playlists').select('*', { count: 'exact', head: true }),
+          supabaseClient.from('channels').select('*', { count: 'exact', head: true }),
+          supabaseClient.from('channels').select('*', { count: 'exact', head: true }).neq('status', 'offline'),
+          supabaseClient.from('channels').select('*', { count: 'exact', head: true }).eq('status', 'offline'),
+        ]);
+        if (pRes.count !== null && pRes.count !== undefined) lastStatus.playlistCount = pRes.count;
+        if (cRes.count !== null && cRes.count !== undefined) lastStatus.channelCount = cRes.count;
+        if (onlineRes.count !== null && onlineRes.count !== undefined) lastStatus.onlineCount = onlineRes.count;
+        if (offlineRes.count !== null && offlineRes.count !== undefined) lastStatus.offlineCount = offlineRes.count;
       } catch {}
     }
   }
