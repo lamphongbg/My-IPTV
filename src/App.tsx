@@ -447,6 +447,19 @@ export default function App() {
     }
   };
 
+  const handleResetAllStatus = async () => {
+    if (!window.confirm('Khôi phục tất cả các kênh về trạng thái Khả Dụng (Active)?')) return;
+    try {
+      const res = await fetch('/api/channels/reset-status', { method: 'POST' });
+      if (res.ok) {
+        fetchMetadata();
+        loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current, 'all');
+      }
+    } catch (err) {
+      console.error('Lỗi khôi phục trạng thái:', err);
+    }
+  };
+
   // Change page size (fixed 50 or 100 channels per page)
   const handleChangePageSize = (newSize: number) => {
     setPageSize(newSize);
