@@ -1,181 +1,33 @@
 import fs from 'fs';
 import path from 'path';
-import pg from 'pg';
 import type { Channel, Playlist, StreamTestResult } from '../types/iptv.js';
 import { parseM3U } from '../../utils/m3uParser.js';
-
-const { Pool } = pg;
+import {
+  initCloudDatabase,
+  fetchCloudPlaylists,
+  fetchCloudChannels,
+  bulkUpsertCloudChannels,
+  bulkUpsertCloudPlaylists,
+  bulkUpdateCloudChannelStatuses,
+  getCloudStorageStatus,
+  getRecommendedSqlSchema,
+  type CloudStorageStatus,
+} from './supabaseClient.js';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const PLAYLISTS_FILE = path.join(DATA_DIR, 'playlists.json');
 const CHANNELS_FILE = path.join(DATA_DIR, 'channels.json');
+const CHANNELS_BAK_FILE = path.join(DATA_DIR, 'channels.json.bak');
+const CHANNELS_M3U_FILE = path.join(DATA_DIR, 'channels.m3u');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// PostgreSQL connection pool (if DATABASE_URL is set)
-let pool: pg.Pool | null = null;
-const databaseUrl = process.env.DATABASE_URL;
-
-if (databaseUrl) {
-  try {
-    pool = new Pool({
-      connectionString: databaseUrl,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
-    });
-    console.log('[Storage] Connected to PostgreSQL via DATABASE_URL');
-  } catch (err) {
-    console.error('[Storage] Failed to initialize PostgreSQL pool, falling back to local file storage:', err);
-    pool = null;
-  }
-}
-
-// Initialize tables in PostgreSQL
-async function initPostgresTables() {
-  if (!pool) return;
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS playlists (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        url TEXT,
-        content TEXT,
-        enabled BOOLEAN NOT NULL DEFAULT true,
-        channel_count INT NOT NULL DEFAULT 0,
-        last_updated TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'active',
-        error_message TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS channels (
-        id TEXT PRIMARY KEY,
-        playlist_id TEXT,
-        name TEXT NOT NULL,
-        "group" TEXT NOT NULL,
-        logo TEXT,
-        stream_url TEXT NOT NULL,
-        format TEXT NOT NULL DEFAULT 'hls',
-        tvg_id TEXT,
-        tvg_name TEXT,
-        video_codec TEXT,
-        audio_codec TEXT,
-        resolution TEXT,
-        status TEXT NOT NULL DEFAULT 'active',
-        description TEXT,
-        updated_at TEXT NOT NULL
-      );
-    `);
-    console.log('[Storage] PostgreSQL tables verified.');
-    await seedPostgresFromFiles();
-  } catch (err) {
-    console.error('[Storage] Error initializing PostgreSQL tables:', err);
-  }
-}
-
-// Auto-seed Postgres if tables are newly created and empty
-async function seedPostgresFromFiles() {
-  if (!pool) return;
-  try {
-    const chRes = await pool.query('SELECT COUNT(*) FROM channels');
-    const chCount = parseInt(chRes.rows[0].count, 10);
-    if (chCount === 0) {
-      console.log('[Storage] PostgreSQL channels table is empty. Auto-seeding initial data from local files...');
-      let initialChannels: Channel[] = [];
-      if (fs.existsSync(CHANNELS_FILE)) {
-        try {
-          initialChannels = JSON.parse(fs.readFileSync(CHANNELS_FILE, 'utf-8'));
-        } catch {}
-      }
-      if (initialChannels.length === 0 && fs.existsSync(CHANNELS_BAK_FILE)) {
-        try {
-          initialChannels = JSON.parse(fs.readFileSync(CHANNELS_BAK_FILE, 'utf-8'));
-        } catch {}
-      }
-      if (initialChannels.length === 0 && fs.existsSync(CHANNELS_M3U_FILE)) {
-        try {
-          initialChannels = parseM3U(fs.readFileSync(CHANNELS_M3U_FILE, 'utf-8'), 'default-playlist');
-        } catch {}
-      }
-
-      const CHUNK_SIZE = 300;
-      for (let i = 0; i < initialChannels.length; i += CHUNK_SIZE) {
-        const chunk = initialChannels.slice(i, i + CHUNK_SIZE);
-        const valuePlaceholders: string[] = [];
-        const params: any[] = [];
-        let pIndex = 1;
-        for (const c of chunk) {
-          valuePlaceholders.push(`($${pIndex}, $${pIndex + 1}, $${pIndex + 2}, $${pIndex + 3}, $${pIndex + 4}, $${pIndex + 5}, $${pIndex + 6}, $${pIndex + 7}, $${pIndex + 8}, $${pIndex + 9}, $${pIndex + 10}, $${pIndex + 11}, $${pIndex + 12}, $${pIndex + 13}, $${pIndex + 14})`);
-          params.push(
-            c.id,
-            c.playlist_id || 'default-playlist',
-            c.name,
-            c.group || 'Khác',
-            c.logo || '',
-            c.stream_url,
-            c.format || 'hls',
-            c.tvg_id || null,
-            c.tvg_name || null,
-            c.video_codec || null,
-            c.audio_codec || null,
-            c.resolution || null,
-            c.status || 'active',
-            c.description || null,
-            c.updated_at || new Date().toISOString()
-          );
-          pIndex += 15;
-        }
-        await pool.query(
-          `INSERT INTO channels (id, playlist_id, name, "group", logo, stream_url, format, tvg_id, tvg_name, video_codec, audio_codec, resolution, status, description, updated_at)
-           VALUES ${valuePlaceholders.join(', ')} ON CONFLICT (id) DO NOTHING`,
-          params
-        );
-      }
-      console.log(`[Storage] Successfully seeded ${initialChannels.length} channels into PostgreSQL.`);
-    }
-
-    const plRes = await pool.query('SELECT COUNT(*) FROM playlists');
-    const plCount = parseInt(plRes.rows[0].count, 10);
-    if (plCount === 0) {
-      let initialPlaylists: Playlist[] = [];
-      if (fs.existsSync(PLAYLISTS_FILE)) {
-        try {
-          initialPlaylists = JSON.parse(fs.readFileSync(PLAYLISTS_FILE, 'utf-8'));
-        } catch {}
-      }
-      if (initialPlaylists.length === 0) {
-        initialPlaylists = [{
-          id: 'default-playlist',
-          name: 'Danh sách VTV & Quốc tế (Mặc định)',
-          type: 'content',
-          enabled: true,
-          channel_count: chCount || 0,
-          last_updated: new Date().toISOString(),
-          status: 'active'
-        }];
-      }
-      for (const pl of initialPlaylists) {
-        await pool.query(
-          `INSERT INTO playlists (id, name, type, url, content, enabled, channel_count, last_updated, status, error_message)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (id) DO NOTHING`,
-          [pl.id, pl.name, pl.type, pl.url || null, pl.content || null, pl.enabled, pl.channel_count, pl.last_updated, pl.status, pl.error_message || null]
-        );
-      }
-    }
-  } catch (err) {
-    console.error('[Storage] Error during Postgres auto-seeding:', err);
-  }
-}
-
-// In-memory / file fallback state
+// In-memory cache for ultra-low latency (<2ms reads for 11,000+ channels)
 let playlistsCache: Playlist[] = [];
 let channelsCache: Channel[] = [];
-
-// Backup & M3U fallback paths
-const CHANNELS_BAK_FILE = path.join(DATA_DIR, 'channels.json.bak');
-const CHANNELS_M3U_FILE = path.join(DATA_DIR, 'channels.m3u');
 
 // Atomic write helper to prevent corrupted/truncated JSON files on crash or restart
 function atomicWriteJsonSync(filePath: string, data: any) {
@@ -266,7 +118,6 @@ function loadFileState() {
     try {
       channelsCache = JSON.parse(fs.readFileSync(CHANNELS_BAK_FILE, 'utf-8'));
       console.log(`[Storage] Successfully recovered ${channelsCache.length} channels from channels.json.bak`);
-      // Re-save recovered data to channels.json atomically
       atomicWriteJsonSync(CHANNELS_FILE, channelsCache);
     } catch (bakErr) {
       console.error('[Storage] Error reading channels.json.bak:', bakErr);
@@ -289,7 +140,6 @@ function loadFileState() {
   if (playlistsCache.length === 0 || channelsCache.length === 0) {
     seedDefaultData();
   } else {
-    // Keep backup updated
     try {
       if (channelsCache.length > 0 && (!fs.existsSync(CHANNELS_BAK_FILE) || Math.random() < 0.2)) {
         atomicWriteJsonSync(CHANNELS_BAK_FILE, channelsCache);
@@ -297,7 +147,7 @@ function loadFileState() {
     } catch {}
   }
 
-  console.log(`[Storage] State loaded: ${playlistsCache.length} playlists, ${channelsCache.length} channels.`);
+  console.log(`[Storage] Local state loaded: ${playlistsCache.length} playlists, ${channelsCache.length} channels.`);
 }
 
 let saveDebounceTimer: NodeJS.Timeout | null = null;
@@ -331,38 +181,110 @@ export function saveFileState(immediate = false) {
   }
 }
 
-// Initial bootstrap
-if (pool) {
-  initPostgresTables().catch(console.error);
-} else {
-  loadFileState();
+// -----------------------------------------------------------------------------
+// STATUS UPDATE BUFFERING (For high-speed batch channel scanning)
+// -----------------------------------------------------------------------------
+
+let pendingCloudUpdates: Array<{ id: string; status: 'active' | 'offline'; description?: string; updated_at: string }> = [];
+let cloudFlushTimer: NodeJS.Timeout | null = null;
+
+export function queueCloudStatusUpdate(update: {
+  id: string;
+  status: 'active' | 'offline';
+  description?: string;
+  updated_at: string;
+}) {
+  pendingCloudUpdates.push(update);
+  if (pendingCloudUpdates.length >= 60) {
+    flushCloudStatusUpdates();
+  } else if (!cloudFlushTimer) {
+    cloudFlushTimer = setTimeout(() => {
+      flushCloudStatusUpdates();
+    }, 1500);
+  }
 }
+
+export async function flushCloudStatusUpdates(): Promise<void> {
+  if (cloudFlushTimer) {
+    clearTimeout(cloudFlushTimer);
+    cloudFlushTimer = null;
+  }
+  if (pendingCloudUpdates.length === 0) return;
+
+  const batch = [...pendingCloudUpdates];
+  pendingCloudUpdates = [];
+
+  try {
+    await bulkUpdateCloudChannelStatuses(batch);
+  } catch (err) {
+    console.error('[Storage] Error flushing status updates to Cloud:', err);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// INITIAL BOOTSTRAP: HYBRID LOCAL + CLOUD STORAGE
+// -----------------------------------------------------------------------------
+
+export async function initStorage(): Promise<void> {
+  // Step 1: Always load local files into cache first (fast start, has initial data)
+  loadFileState();
+
+  // Step 2: Initialize Supabase / PostgreSQL cloud connection if configured
+  try {
+    const cloudStatus = await initCloudDatabase();
+    if (cloudStatus.connected) {
+      console.log(`[Storage] Cloud Storage connected (${cloudStatus.provider})! Channels in Cloud: ${cloudStatus.channelCount}`);
+
+      if (cloudStatus.channelCount > 0) {
+        // Cloud already has channels! Load them into RAM cache so that any Render deploy
+        // immediately boots with the already scanned channels and statuses intact!
+        const cloudChannels = await fetchCloudChannels();
+        const cloudPlaylists = await fetchCloudPlaylists();
+
+        if (cloudChannels && cloudChannels.length > 0) {
+          channelsCache = cloudChannels;
+          const onlineCount = cloudChannels.filter((c) => c.status !== 'offline').length;
+          const offlineCount = cloudChannels.length - onlineCount;
+          console.log(`[Storage] Synced ${cloudChannels.length} channels from Supabase (${onlineCount} Online, ${offlineCount} Offline). No rescan required!`);
+        }
+
+        if (cloudPlaylists && cloudPlaylists.length > 0) {
+          playlistsCache = cloudPlaylists;
+        }
+
+        // Save local backup copies
+        saveFileState(true);
+      } else if (channelsCache.length > 0) {
+        // Cloud database is connected but fresh/empty!
+        // Automatically seed the local channels (with existing scan status) to Supabase
+        console.log(`[Storage] Cloud database is empty. Auto-seeding ${channelsCache.length} channels with scan statuses to Cloud...`);
+        bulkUpsertCloudPlaylists(playlistsCache).catch(console.error);
+        bulkUpsertCloudChannels(channelsCache).then((res) => {
+          if (res.success) {
+            console.log(`[Storage] Successfully seeded ${res.totalUploaded} channels and scan statuses to Cloud!`);
+          }
+        }).catch(console.error);
+      }
+    } else {
+      console.log('[Storage] Running in Local Storage Mode (data/channels.json). Add DATABASE_URL or SUPABASE_URL to persist to Cloud on Render.');
+    }
+  } catch (err) {
+    console.error('[Storage] Error during cloud storage bootstrap:', err);
+  }
+}
+
+// Run bootstrap immediately
+initStorage().catch(console.error);
 
 // -----------------------------------------------------------------------------
 // PLAYLIST OPERATIONS
 // -----------------------------------------------------------------------------
 
 export async function getPlaylists(): Promise<Playlist[]> {
-  if (pool) {
-    try {
-      const res = await pool.query('SELECT * FROM playlists ORDER BY last_updated DESC');
-      return res.rows;
-    } catch (err) {
-      console.error('[Storage] Postgres getPlaylists error:', err);
-    }
-  }
   return [...playlistsCache];
 }
 
 export async function getPlaylistById(id: string): Promise<Playlist | null> {
-  if (pool) {
-    try {
-      const res = await pool.query('SELECT * FROM playlists WHERE id = $1', [id]);
-      return res.rows[0] || null;
-    } catch (err) {
-      console.error('[Storage] Postgres getPlaylistById error:', err);
-    }
-  }
   return playlistsCache.find((p) => p.id === id) || null;
 }
 
@@ -386,31 +308,9 @@ export async function createPlaylist(data: {
     status: 'syncing',
   };
 
-  if (pool) {
-    try {
-      await pool.query(
-        `INSERT INTO playlists (id, name, type, url, content, enabled, channel_count, last_updated, status, error_message)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          newPl.id,
-          newPl.name,
-          newPl.type,
-          newPl.url || null,
-          newPl.content || null,
-          newPl.enabled,
-          newPl.channel_count,
-          newPl.last_updated,
-          newPl.status,
-          null,
-        ]
-      );
-    } catch (err) {
-      console.error('[Storage] Postgres createPlaylist error:', err);
-    }
-  } else {
-    playlistsCache.unshift(newPl);
-    saveFileState();
-  }
+  playlistsCache.unshift(newPl);
+  saveFileState();
+  bulkUpsertCloudPlaylists([newPl]).catch(console.error);
 
   // Immediately sync channels for the new playlist
   await syncPlaylist(id);
@@ -428,54 +328,41 @@ export async function updatePlaylist(id: string, data: Partial<Playlist>): Promi
     last_updated: new Date().toISOString(),
   };
 
-  if (pool) {
-    try {
-      await pool.query(
-        `UPDATE playlists SET name = $1, type = $2, url = $3, content = $4, enabled = $5,
-         channel_count = $6, last_updated = $7, status = $8, error_message = $9 WHERE id = $10`,
-        [
-          updated.name,
-          updated.type,
-          updated.url || null,
-          updated.content || null,
-          updated.enabled,
-          updated.channel_count,
-          updated.last_updated,
-          updated.status,
-          updated.error_message || null,
-          id,
-        ]
-      );
-    } catch (err) {
-      console.error('[Storage] Postgres updatePlaylist error:', err);
-    }
-  } else {
-    const idx = playlistsCache.findIndex((p) => p.id === id);
-    if (idx !== -1) {
-      playlistsCache[idx] = updated;
-      saveFileState();
-    }
+  const idx = playlistsCache.findIndex((p) => p.id === id);
+  if (idx !== -1) {
+    playlistsCache[idx] = updated;
+    saveFileState();
   }
 
+  bulkUpsertCloudPlaylists([updated]).catch(console.error);
   return updated;
 }
 
 export async function deletePlaylist(id: string): Promise<boolean> {
+  playlistsCache = playlistsCache.filter((p) => p.id !== id);
+  channelsCache = channelsCache.filter((c) => c.playlist_id !== id);
+  saveFileState();
+
+  // Also clean up from cloud if connected
+  const { getPgPool, getSupabaseClient } = await import('./supabaseClient.js');
+  const pool = getPgPool();
   if (pool) {
-    try {
-      await pool.query('DELETE FROM channels WHERE playlist_id = $1', [id]);
-      await pool.query('DELETE FROM playlists WHERE id = $1', [id]);
-      return true;
-    } catch (err) {
-      console.error('[Storage] Postgres deletePlaylist error:', err);
-      return false;
-    }
-  } else {
-    playlistsCache = playlistsCache.filter((p) => p.id !== id);
-    channelsCache = channelsCache.filter((c) => c.playlist_id !== id);
-    saveFileState();
-    return true;
+    pool.query('DELETE FROM channels WHERE playlist_id = $1', [id]).catch(console.error);
+    pool.query('DELETE FROM playlists WHERE id = $1', [id]).catch(console.error);
   }
+  const client = getSupabaseClient();
+  if (client) {
+    (async () => {
+      try {
+        await client.from('channels').delete().eq('playlist_id', id);
+        await client.from('playlists').delete().eq('id', id);
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }
+
+  return true;
 }
 
 // -----------------------------------------------------------------------------
@@ -486,15 +373,6 @@ export async function getAllActiveChannels(): Promise<Channel[]> {
   const playlists = await getPlaylists();
   const enabledPlaylistIds = new Set(playlists.filter((p) => p.enabled).map((p) => p.id));
 
-  if (pool) {
-    try {
-      const res = await pool.query('SELECT * FROM channels WHERE status = $1', ['active']);
-      return res.rows.filter((c) => !c.playlist_id || enabledPlaylistIds.size === 0 || enabledPlaylistIds.has(c.playlist_id));
-    } catch (err) {
-      console.error('[Storage] Postgres getAllActiveChannels error:', err);
-    }
-  }
-
   return channelsCache.filter((c) => {
     if (c.status === 'offline') return false;
     if (c.playlist_id && enabledPlaylistIds.size > 0 && !enabledPlaylistIds.has(c.playlist_id)) return false;
@@ -503,26 +381,10 @@ export async function getAllActiveChannels(): Promise<Channel[]> {
 }
 
 export async function getAllChannelsAdmin(): Promise<Channel[]> {
-  if (pool) {
-    try {
-      const res = await pool.query('SELECT * FROM channels ORDER BY name ASC');
-      return res.rows;
-    } catch (err) {
-      console.error('[Storage] Postgres getAllChannelsAdmin error:', err);
-    }
-  }
   return [...channelsCache];
 }
 
 export async function getChannelById(id: string): Promise<Channel | null> {
-  if (pool) {
-    try {
-      const res = await pool.query('SELECT * FROM channels WHERE id = $1', [id]);
-      return res.rows[0] || null;
-    } catch (err) {
-      console.error('[Storage] Postgres getChannelById error:', err);
-    }
-  }
   return channelsCache.find((c) => c.id === id) || null;
 }
 
@@ -546,36 +408,9 @@ export async function createChannel(data: Partial<Channel>): Promise<Channel> {
     updated_at: new Date().toISOString(),
   };
 
-  if (pool) {
-    try {
-      await pool.query(
-        `INSERT INTO channels (id, playlist_id, name, "group", logo, stream_url, format, tvg_id, tvg_name, video_codec, audio_codec, resolution, status, description, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-        [
-          channel.id,
-          channel.playlist_id || null,
-          channel.name,
-          channel.group,
-          channel.logo,
-          channel.stream_url,
-          channel.format,
-          channel.tvg_id || null,
-          channel.tvg_name || null,
-          channel.video_codec || null,
-          channel.audio_codec || null,
-          channel.resolution || null,
-          channel.status || 'active',
-          channel.description || null,
-          channel.updated_at,
-        ]
-      );
-    } catch (err) {
-      console.error('[Storage] Postgres createChannel error:', err);
-    }
-  } else {
-    channelsCache.push(channel);
-    saveFileState();
-  }
+  channelsCache.push(channel);
+  saveFileState();
+  bulkUpsertCloudChannels([channel]).catch(console.error);
 
   return channel;
 }
@@ -587,60 +422,51 @@ export async function updateChannel(id: string, data: Partial<Channel>): Promise
   const updated: Channel = {
     ...existing,
     ...data,
-    updated_at: new Date().toISOString(),
+    updated_at: data.updated_at || new Date().toISOString(),
   };
 
-  if (pool) {
-    try {
-      await pool.query(
-        `UPDATE channels SET name = $1, "group" = $2, logo = $3, stream_url = $4, format = $5,
-         tvg_id = $6, tvg_name = $7, video_codec = $8, audio_codec = $9, resolution = $10,
-         status = $11, description = $12, updated_at = $13 WHERE id = $14`,
-        [
-          updated.name,
-          updated.group,
-          updated.logo,
-          updated.stream_url,
-          updated.format,
-          updated.tvg_id || null,
-          updated.tvg_name || null,
-          updated.video_codec || null,
-          updated.audio_codec || null,
-          updated.resolution || null,
-          updated.status || 'active',
-          updated.description || null,
-          updated.updated_at,
-          id,
-        ]
-      );
-    } catch (err) {
-      console.error('[Storage] Postgres updateChannel error:', err);
-    }
+  const idx = channelsCache.findIndex((c) => c.id === id);
+  if (idx !== -1) {
+    channelsCache[idx] = updated;
+    saveFileState();
+  }
+
+  // Queue status updates for fast batch flushing, or sync metadata immediately
+  if (data.status) {
+    queueCloudStatusUpdate({
+      id,
+      status: (updated.status === 'offline' ? 'offline' : 'active') as 'active' | 'offline',
+      description: updated.description || undefined,
+      updated_at: updated.updated_at || new Date().toISOString(),
+    });
   } else {
-    const idx = channelsCache.findIndex((c) => c.id === id);
-    if (idx !== -1) {
-      channelsCache[idx] = updated;
-      saveFileState();
-    }
+    bulkUpsertCloudChannels([updated]).catch(console.error);
   }
 
   return updated;
 }
 
 export async function deleteChannel(id: string): Promise<boolean> {
+  channelsCache = channelsCache.filter((c) => c.id !== id);
+  saveFileState();
+
+  const { getPgPool, getSupabaseClient } = await import('./supabaseClient.js');
+  const pool = getPgPool();
   if (pool) {
-    try {
-      await pool.query('DELETE FROM channels WHERE id = $1', [id]);
-      return true;
-    } catch (err) {
-      console.error('[Storage] Postgres deleteChannel error:', err);
-      return false;
-    }
-  } else {
-    channelsCache = channelsCache.filter((c) => c.id !== id);
-    saveFileState();
-    return true;
+    pool.query('DELETE FROM channels WHERE id = $1', [id]).catch(console.error);
   }
+  const client = getSupabaseClient();
+  if (client) {
+    (async () => {
+      try {
+        await client.from('channels').delete().eq('id', id);
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }
+
+  return true;
 }
 
 // -----------------------------------------------------------------------------
@@ -691,38 +517,13 @@ export async function syncPlaylist(id: string): Promise<{ success: boolean; coun
       throw new Error('Không phân tích được kênh nào từ định dạng M3U');
     }
 
-    // Replace channels for this playlist
-    if (pool) {
-      await pool.query('DELETE FROM channels WHERE playlist_id = $1', [id]);
-      for (const ch of parsedChannels) {
-        await pool.query(
-          `INSERT INTO channels (id, playlist_id, name, "group", logo, stream_url, format, tvg_id, tvg_name, video_codec, audio_codec, resolution, status, description, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-           ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, stream_url = EXCLUDED.stream_url`,
-          [
-            ch.id,
-            id,
-            ch.name,
-            ch.group,
-            ch.logo || '',
-            ch.stream_url,
-            ch.format,
-            ch.tvg_id || null,
-            ch.tvg_name || null,
-            ch.video_codec || 'h264',
-            ch.audio_codec || 'aac',
-            ch.resolution || 'HD',
-            'active',
-            ch.description || null,
-            ch.updated_at || new Date().toISOString(),
-          ]
-        );
-      }
-    } else {
-      channelsCache = channelsCache.filter((c) => c.playlist_id !== id);
-      channelsCache.push(...parsedChannels);
-      saveFileState();
-    }
+    // Replace channels for this playlist in memory and file
+    channelsCache = channelsCache.filter((c) => c.playlist_id !== id);
+    channelsCache.push(...parsedChannels);
+    saveFileState();
+
+    // Sync to Cloud in batches
+    bulkUpsertCloudChannels(parsedChannels).catch(console.error);
 
     // Update playlist status
     await updatePlaylist(id, {
@@ -767,6 +568,52 @@ export async function syncAllPlaylists(): Promise<{ totalSuccess: number; totalF
 }
 
 // -----------------------------------------------------------------------------
+// CLOUD SYNC & STATUS FUNCTIONS (For Admin Portal & Render Deployment)
+// -----------------------------------------------------------------------------
+
+export async function getCloudStatus(): Promise<CloudStorageStatus & { localChannelsCount: number; localPlaylistsCount: number }> {
+  const status = await getCloudStorageStatus();
+  return {
+    ...status,
+    localChannelsCount: channelsCache.length,
+    localPlaylistsCount: playlistsCache.length,
+  };
+}
+
+export async function pushAllToCloud(onProgress?: (done: number, total: number) => void) {
+  await bulkUpsertCloudPlaylists(playlistsCache);
+  const result = await bulkUpsertCloudChannels(channelsCache, onProgress);
+  return result;
+}
+
+export async function pullAllFromCloud() {
+  const channels = await fetchCloudChannels();
+  const playlists = await fetchCloudPlaylists();
+
+  if (channels && channels.length > 0) {
+    channelsCache = channels;
+    if (playlists && playlists.length > 0) {
+      playlistsCache = playlists;
+    }
+    saveFileState(true);
+    return {
+      success: true,
+      channelCount: channels.length,
+      playlistCount: playlists?.length || 0,
+    };
+  }
+
+  return {
+    success: false,
+    channelCount: 0,
+    playlistCount: 0,
+    error: 'Không tìm thấy kênh nào trên Supabase hoặc cơ sở dữ liệu rỗng.',
+  };
+}
+
+export { getRecommendedSqlSchema };
+
+// -----------------------------------------------------------------------------
 // STREAM TEST ENGINE (Lightweight, non-proxy HTTP probe)
 // -----------------------------------------------------------------------------
 
@@ -800,7 +647,6 @@ export async function testStreamUrl(url: string): Promise<StreamTestResult> {
         },
       });
     } catch {
-      // If HEAD is blocked by IPTV provider, test small GET range
       res = await fetch(url, {
         method: 'GET',
         signal: controller.signal,
@@ -847,68 +693,3 @@ export async function testStreamUrl(url: string): Promise<StreamTestResult> {
     };
   }
 }
-
-/**
- * Xóa vĩnh viễn toàn bộ các kênh đang có trạng thái 'offline'
- */
-export async function purgeOfflineChannels(): Promise<{ deletedCount: number; remainingCount: number }> {
-  let deletedCount = 0;
-  if (pool) {
-    try {
-      const res = await pool.query("DELETE FROM channels WHERE status = 'offline' RETURNING id");
-      deletedCount = res.rowCount || 0;
-      const countRes = await pool.query('SELECT COUNT(*) FROM channels');
-      const remainingCount = parseInt(countRes.rows[0].count, 10);
-
-      // Cập nhật lại số lượng kênh trong playlists
-      await pool.query(`
-        UPDATE playlists p
-        SET channel_count = (SELECT COUNT(*) FROM channels c WHERE c.playlist_id = p.id)
-      `);
-
-      return { deletedCount, remainingCount };
-    } catch (err) {
-      console.error('[Storage] Postgres purgeOfflineChannels error:', err);
-    }
-  }
-
-  const initialCount = channelsCache.length;
-  channelsCache = channelsCache.filter((c) => c.status !== 'offline');
-  deletedCount = initialCount - channelsCache.length;
-
-  // Cập nhật lại channel_count trong playlistsCache
-  const countsByPl: Record<string, number> = {};
-  for (const c of channelsCache) {
-    if (c.playlist_id) countsByPl[c.playlist_id] = (countsByPl[c.playlist_id] || 0) + 1;
-  }
-  for (const pl of playlistsCache) {
-    pl.channel_count = countsByPl[pl.id] || 0;
-  }
-
-  saveFileState(true);
-  return { deletedCount, remainingCount: channelsCache.length };
-}
-
-/**
- * Lấy thông tin cơ sở dữ liệu và lưu trữ hiện tại
- */
-export async function getStorageInfo(): Promise<{
-  backend: 'postgres' | 'local_json';
-  hasDatabaseUrl: boolean;
-  totalChannels: number;
-  activeChannels: number;
-  offlineChannels: number;
-}> {
-  const all = await getAllChannelsAdmin();
-  const offline = all.filter((c) => c.status === 'offline').length;
-  const active = all.length - offline;
-
-  return {
-    backend: pool ? 'postgres' : 'local_json',
-    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-    totalChannels: all.length,
-    activeChannels: active,
-    offlineChannels: offline,
-  };
-}
-

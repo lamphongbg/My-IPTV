@@ -1,5 +1,5 @@
 import { Channel, StreamTestResult } from '../types/iptv.js';
-import { getAllChannelsAdmin, updateChannel, saveFileState, purgeOfflineChannels } from '../db/storage.js';
+import { getAllChannelsAdmin, updateChannel, saveFileState, flushCloudStatusUpdates } from '../db/storage.js';
 
 export interface ScanItemResult {
   channelId: string;
@@ -24,8 +24,6 @@ export interface BatchScanProgress {
   finishedAt?: string;
   scopeDescription?: string;
   recentResults: ScanItemResult[];
-  autoPurgeOffline?: boolean;
-  purgedCount?: number;
 }
 
 let activeScan: {
@@ -215,7 +213,6 @@ export async function startBatchScan(options?: {
   channelIds?: string[];
   group?: string;
   scopeDescription?: string;
-  autoPurgeOffline?: boolean;
 }): Promise<void> {
   if (activeScan.progress.isRunning) {
     return; // Đang có tiến trình quét đang chạy
@@ -245,7 +242,6 @@ export async function startBatchScan(options?: {
     currentChannelName: '',
     scopeDescription: options?.scopeDescription || `Quét ${targetChannels.length} kênh`,
     startedAt: new Date().toISOString(),
-    autoPurgeOffline: Boolean(options?.autoPurgeOffline),
     recentResults: [],
   };
 
@@ -286,17 +282,8 @@ export async function startBatchScan(options?: {
     const workers = Array.from({ length: Math.min(concurrency, targetChannels.length || 1) }, () => worker());
     await Promise.all(workers);
 
-    // Tự động xóa kênh lỗi nếu được bật
-    if (options?.autoPurgeOffline && !activeScan.isCancelled) {
-      try {
-        const purgeRes = await purgeOfflineChannels();
-        activeScan.progress.purgedCount = purgeRes.deletedCount;
-      } catch (err) {
-        console.error('[Scanner] Lỗi tự động dọn kênh offline:', err);
-      }
-    }
-
-    // Lưu ngay lập tức xuống đĩa khi hoàn tất
+    // Flush buffered cloud updates and save to disk
+    await flushCloudStatusUpdates();
     saveFileState(true);
 
     activeScan.progress.isRunning = false;
@@ -309,6 +296,7 @@ export function stopBatchScan(): void {
   activeScan.isCancelled = true;
   activeScan.progress.isRunning = false;
   activeScan.progress.finishedAt = new Date().toISOString();
+  flushCloudStatusUpdates().catch(console.error);
 }
 
 export function getScanProgress(): BatchScanProgress {

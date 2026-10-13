@@ -30,14 +30,10 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Download,
-  HardDrive,
   Copy,
-  HelpCircle,
+  Server,
   Cloud,
-  Sparkles,
-  GitBranch,
-  GitCommit,
+  Download,
 } from 'lucide-react';
 
 const ADMIN_TOKEN_KEY = 'my_iptv_admin_token';
@@ -54,12 +50,29 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
   // Dashboard state
-  const [activeTab, setActiveTab] = useState<'playlists' | 'channels' | 'tester'>('playlists');
+  const [activeTab, setActiveTab] = useState<'playlists' | 'channels' | 'tester' | 'supabase'>('playlists');
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Supabase & Cloud Storage state
+  const [supabaseStatus, setSupabaseStatus] = useState<{
+    enabled: boolean;
+    provider: 'postgres_pool' | 'supabase_api' | 'local_fallback';
+    connected: boolean;
+    channelCount: number;
+    playlistCount: number;
+    pingMs?: number;
+    error?: string;
+    configUrlMasked?: string;
+    localChannelsCount: number;
+    localPlaylistsCount: number;
+  } | null>(null);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [copiedSchema, setCopiedSchema] = useState<boolean>(false);
+  const [copiedEnv, setCopiedEnv] = useState<boolean>(false);
 
   // Modals & Forms
   const [isAddPlaylistOpen, setIsAddPlaylistOpen] = useState<boolean>(false);
@@ -107,26 +120,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
   const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
   const [scanScope, setScanScope] = useState<'page' | 'filtered' | 'all'>('page');
   const [scanConcurrency, setScanConcurrency] = useState<number>(15);
-  const [autoPurgeOffline, setAutoPurgeOffline] = useState<boolean>(false);
-  const [isPurging, setIsPurging] = useState<boolean>(false);
-  const [isStorageModalOpen, setIsStorageModalOpen] = useState<boolean>(false);
-  const [storageInfo, setStorageInfo] = useState<{
-    backend: string;
-    hasDatabaseUrl: boolean;
-    totalChannels: number;
-    activeChannels: number;
-    offlineChannels: number;
-  } | null>(null);
-  const [copiedText, setCopiedText] = useState<string | null>(null);
-
-  // GitHub Sync State
-  const [isGitHubModalOpen, setIsGitHubModalOpen] = useState<boolean>(false);
-  const [githubTokenInput, setGithubTokenInput] = useState<string>(() => localStorage.getItem('iptv_gh_token') || '');
-  const [githubRepoInput, setGithubRepoInput] = useState<string>(() => localStorage.getItem('iptv_gh_repo') || '');
-  const [githubBranchInput, setGithubBranchInput] = useState<string>(() => localStorage.getItem('iptv_gh_branch') || 'main');
-  const [githubSyncMode, setGithubSyncMode] = useState<'clean_only' | 'all'>('clean_only');
-  const [isSyncingGitHub, setIsSyncingGitHub] = useState<boolean>(false);
-  const [githubSyncResult, setGithubSyncResult] = useState<{ message: string; commitUrl?: string } | null>(null);
 
   // Stream probe state
   const [testUrlInput, setTestUrlInput] = useState<string>('');
@@ -215,11 +208,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     if (!token) return;
     setIsLoading(true);
     try {
-      const [statsRes, playlistsRes, channelsRes, storageRes] = await Promise.all([
+      const [statsRes, playlistsRes, channelsRes, sbStatusRes] = await Promise.all([
         fetch('/api/admin/stats', { headers: authHeaders() }),
         fetch('/api/admin/playlists', { headers: authHeaders() }),
         fetch('/api/admin/channels', { headers: authHeaders() }),
-        fetch('/api/admin/storage-status', { headers: authHeaders() }).catch(() => null),
+        fetch('/api/admin/supabase/status', { headers: authHeaders() }).catch(() => null),
       ]);
 
       if (statsRes.status === 401 || playlistsRes.status === 401) {
@@ -228,7 +221,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
       }
 
       if (statsRes.ok) setStats(await statsRes.json());
-      if (storageRes && storageRes.ok) setStorageInfo(await storageRes.json());
       if (playlistsRes.ok) {
         const rawPls = await playlistsRes.json();
         const sortedPls = Array.isArray(rawPls)
@@ -241,10 +233,76 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
         setPlaylists(sortedPls);
       }
       if (channelsRes.ok) setChannels(await channelsRes.json());
+      if (sbStatusRes && sbStatusRes.ok) setSupabaseStatus(await sbStatusRes.json());
     } catch (err) {
       console.error('Error fetching admin data:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // SUPABASE / CLOUD ACTIONS
+  // ---------------------------------------------------------------------------
+
+  const handlePushToSupabase = async () => {
+    if (!confirm('Bạn có chắc chắn muốn đẩy toàn bộ danh sách kênh và kết quả quét hiện tại lên Supabase Cloud Storage? Dữ liệu trên Supabase sẽ được lưu trữ vĩnh viễn, giúp Render không bao giờ phải quét lại.')) return;
+    setIsSyncingCloud(true);
+    showNotification('Đang đồng bộ dữ liệu kênh lên Supabase...');
+    try {
+      const res = await fetch('/api/admin/supabase/push', {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Đồng bộ thất bại');
+      showNotification(`Đã đồng bộ thành công ${data.totalUploaded?.toLocaleString('vi-VN')} kênh lên Supabase!`);
+      fetchAdminData();
+    } catch (err: any) {
+      showNotification(err.message || 'Lỗi khi đồng bộ lên Supabase', 'error');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handlePullFromSupabase = async () => {
+    if (!confirm('Bạn có chắc chắn muốn tải dữ liệu từ Supabase về bộ nhớ ứng dụng?')) return;
+    setIsSyncingCloud(true);
+    showNotification('Đang tải dữ liệu từ Supabase...');
+    try {
+      const res = await fetch('/api/admin/supabase/pull', {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Tải dữ liệu thất bại');
+      showNotification(`Đã tải thành công ${data.channelCount?.toLocaleString('vi-VN')} kênh từ Supabase!`);
+      fetchAdminData();
+    } catch (err: any) {
+      showNotification(err.message || 'Lỗi khi tải từ Supabase', 'error');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handleTestSupabaseConnection = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const res = await fetch('/api/admin/supabase/test', {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      setSupabaseStatus(data);
+      if (data.connected) {
+        showNotification(`Kết nối Supabase thành công (${data.pingMs}ms)!`);
+      } else {
+        showNotification('Chưa kết nối được Supabase. Hãy kiểm tra biến môi trường DATABASE_URL hoặc SUPABASE_URL.', 'error');
+      }
+    } catch (err: any) {
+      showNotification('Lỗi kiểm tra kết nối: ' + err.message, 'error');
+    } finally {
+      setIsSyncingCloud(false);
     }
   };
 
@@ -468,7 +526,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
           channelIds,
           group,
           scopeDescription: scopeDesc,
-          autoPurgeOffline,
         }),
       });
       const data = await res.json();
@@ -550,161 +607,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
       fetchAdminData();
     } catch (err: any) {
       showNotification(err.message, 'error');
-    }
-  };
-
-  const handlePurgeOfflineChannels = async () => {
-    const offlineCount = channels.filter((c) => c.status === 'offline').length;
-    if (offlineCount === 0) {
-      showNotification('Hiện không có kênh nào bị đánh dấu lỗi (offline) để xóa!');
-      return;
-    }
-
-    if (
-      !confirm(
-        `XÁC NHẬN XÓA VĨNH VIỄN ${offlineCount.toLocaleString('vi-VN')} KÊNH LỖI (OFFLINE)?\n\n` +
-        `• Các kênh không kết nối được sẽ bị loại bỏ hoàn toàn khỏi hệ thống.\n` +
-        `• Bạn có thể tải file channels.json đã làm sạch sau đó để lưu vào Git.\n` +
-        `• Tiếp tục xóa?`
-      )
-    ) {
-      return;
-    }
-
-    setIsPurging(true);
-    try {
-      const res = await fetch('/api/admin/channels/purge-offline', {
-        method: 'POST',
-        headers: authHeaders(),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Lỗi khi xóa kênh offline');
-      showNotification(data.message, 'success');
-      fetchAdminData();
-    } catch (err: any) {
-      showNotification(err.message, 'error');
-    } finally {
-      setIsPurging(false);
-    }
-  };
-
-  const handleExportCleanJson = async () => {
-    try {
-      showNotification('Đang chuẩn bị file channels.json sạch...');
-      const res = await fetch(`/api/admin/channels/export-clean-json?token=${encodeURIComponent(token || '')}`, {
-        headers: authHeaders(),
-      });
-      if (!res.ok) throw new Error('Không thể tải file channels.json');
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'channels.json';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      showNotification('Đã tải thành công file channels.json sạch về máy tính!');
-    } catch (err: any) {
-      showNotification(err.message, 'error');
-    }
-  };
-
-  const handleExportCleanM3u = async () => {
-    try {
-      showNotification('Đang chuẩn bị file channels_clean.m3u...');
-      const res = await fetch(`/api/admin/channels/export-clean-m3u?token=${encodeURIComponent(token || '')}`, {
-        headers: authHeaders(),
-      });
-      if (!res.ok) throw new Error('Không thể tải file playlist M3U');
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'channels_clean.m3u';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      showNotification('Đã tải thành công file playlist M3U sạch về máy tính!');
-    } catch (err: any) {
-      showNotification(err.message, 'error');
-    }
-  };
-
-  const handleCopyText = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedText(label);
-    showNotification(`Đã sao chép: ${label}`);
-    setTimeout(() => setCopiedText(null), 3000);
-  };
-
-  const handleExportFullJson = async () => {
-    try {
-      showNotification('Đang chuẩn bị file channels_scanned_full.json...');
-      const res = await fetch(`/api/admin/channels/export-full-json?token=${encodeURIComponent(token || '')}`, {
-        headers: authHeaders(),
-      });
-      if (!res.ok) throw new Error('Không thể tải file');
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'channels_scanned_full.json';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      showNotification('Đã tải thành công file dữ liệu đầy đủ kèm trạng thái rà soát!');
-    } catch (err: any) {
-      showNotification(err.message, 'error');
-    }
-  };
-
-  const handleSyncToGitHub = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!githubTokenInput.trim()) {
-      showNotification('Vui lòng nhập GitHub Personal Access Token (PAT)!', 'error');
-      return;
-    }
-    if (!githubRepoInput.trim() || !githubRepoInput.includes('/')) {
-      showNotification('Vui lòng nhập repository hợp lệ (dạng username/repo-name)!', 'error');
-      return;
-    }
-
-    setIsSyncingGitHub(true);
-    setGithubSyncResult(null);
-
-    // Lưu vào localStorage để lần sau người dùng không phải gõ lại
-    localStorage.setItem('iptv_gh_token', githubTokenInput.trim());
-    localStorage.setItem('iptv_gh_repo', githubRepoInput.trim());
-    localStorage.setItem('iptv_gh_branch', githubBranchInput.trim() || 'main');
-
-    try {
-      const res = await fetch('/api/admin/github-sync', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          githubToken: githubTokenInput.trim(),
-          repo: githubRepoInput.trim(),
-          branch: githubBranchInput.trim() || 'main',
-          mode: githubSyncMode,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Đồng bộ lên GitHub thất bại');
-
-      setGithubSyncResult({
-        message: data.message,
-        commitUrl: data.commitUrl,
-      });
-      showNotification('Đã đồng bộ dữ liệu thành công lên GitHub! Render sẽ tự động cập nhật.', 'success');
-      fetchAdminData();
-    } catch (err: any) {
-      showNotification(err.message, 'error');
-    } finally {
-      setIsSyncingGitHub(false);
     }
   };
 
@@ -1001,6 +903,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
             <Activity className="w-4 h-4" />
             <span>Kiểm Tra Luồng (Probe)</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('supabase')}
+            className={`px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1.5 transition ${
+              activeTab === 'supabase'
+                ? 'bg-emerald-500 text-neutral-950 font-bold shadow'
+                : supabaseStatus?.connected
+                ? 'text-emerald-400 hover:text-emerald-300 hover:bg-neutral-900 border border-emerald-500/20'
+                : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+            }`}
+          >
+            <Database className="w-4 h-4 text-emerald-400" />
+            <span>Lưu Trữ Supabase / Cloud</span>
+            {supabaseStatus?.connected ? (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" title="Đã kết nối Supabase" />
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-amber-400 ml-0.5" title="Chế độ Local File" />
+            )}
+          </button>
         </div>
 
         {/* ------------------------------------------------------------------- */}
@@ -1156,51 +1077,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                       ? `Đang Quét (${scanProgress.scanned}/${scanProgress.total}) - Bấm Dừng`
                       : 'Quét Rà Soát Kênh'}
                   </span>
-                </button>
-
-                {/* Nút xóa kênh lỗi vĩnh viễn */}
-                <button
-                  onClick={handlePurgeOfflineChannels}
-                  disabled={isPurging}
-                  className={`px-3 py-2 border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition ${
-                    offlineChannelsCount > 0
-                      ? 'bg-rose-950/80 hover:bg-rose-900 border-rose-700/80 text-rose-200 animate-pulse'
-                      : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-800 text-neutral-400'
-                  }`}
-                  title="Xóa vĩnh viễn tất cả các kênh bị lỗi khỏi hệ thống"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                  <span>{isPurging ? 'Đang xóa...' : `Xóa ${offlineChannelsCount > 0 ? `${offlineChannelsCount} ` : ''}kênh lỗi`}</span>
-                </button>
-
-                {/* Nút xuất channels.json sạch */}
-                <button
-                  onClick={handleExportCleanJson}
-                  className="px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 rounded-xl text-xs font-medium flex items-center gap-1.5 transition"
-                  title="Tải về file channels.json sạch để commit vào GitHub"
-                >
-                  <Download className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Tải JSON sạch</span>
-                </button>
-
-                {/* Nút hướng dẫn lưu vĩnh viễn trên Render */}
-                <button
-                  onClick={() => setIsStorageModalOpen(true)}
-                  className="px-3 py-2 bg-indigo-950/70 hover:bg-indigo-900/90 text-indigo-300 border border-indigo-800/80 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow"
-                  title="Xem giải pháp lưu dữ liệu không bị mất khi Render tự động redeploy"
-                >
-                  <Cloud className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Lưu cố định trên Render</span>
-                </button>
-
-                {/* Nút đồng bộ lên GitHub */}
-                <button
-                  onClick={() => setIsGitHubModalOpen(true)}
-                  className="px-3 py-2 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/80 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow"
-                  title="Đẩy trực tiếp toàn bộ dữ liệu kênh đã rà soát lên GitHub repository của bạn"
-                >
-                  <GitBranch className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Đồng bộ lên GitHub</span>
                 </button>
 
                 <button
@@ -1368,51 +1244,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   <p className="text-[11px] text-neutral-400 truncate">
                     Đang kiểm tra: <span className="text-amber-300 font-medium">{scanProgress.currentChannelName}</span>
                   </p>
-                )}
-
-                {/* Khối tác vụ nhanh khi hoàn tất rà soát */}
-                {!scanProgress.isRunning && (
-                  <div className="pt-2 border-t border-neutral-800 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="text-[11px] text-neutral-400">
-                      {scanProgress.offlineCount > 0 ? (
-                        <span>
-                          Phát hiện <strong className="text-rose-400">{scanProgress.offlineCount}</strong> kênh không hoạt động.
-                        </span>
-                      ) : (
-                        <span className="text-emerald-400">Tất cả {scanProgress.total} kênh đều hoạt động tốt!</span>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {scanProgress.offlineCount > 0 && (
-                        <button
-                          type="button"
-                          onClick={handlePurgeOfflineChannels}
-                          disabled={isPurging}
-                          className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-xs flex items-center gap-1 transition shadow"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          <span>Xóa {scanProgress.offlineCount} kênh lỗi này</span>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={handleExportCleanJson}
-                        className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-lg text-xs font-medium flex items-center gap-1 transition"
-                      >
-                        <Download className="w-3 h-3 text-amber-400" />
-                        <span>Tải JSON sạch</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsStorageModalOpen(true)}
-                        className="px-2.5 py-1 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-800 rounded-lg text-xs font-medium flex items-center gap-1 transition"
-                      >
-                        <Cloud className="w-3 h-3 text-indigo-400" />
-                        <span>Lưu cố định trên Render</span>
-                      </button>
-                    </div>
-                  </div>
                 )}
               </div>
             )}
@@ -1850,6 +1681,295 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
             )}
           </div>
         )}
+
+        {/* ------------------------------------------------------------------- */}
+        {/* TAB 4: SUPABASE & CLOUD STORAGE PERSISTENCE */}
+        {/* ------------------------------------------------------------------- */}
+        {activeTab === 'supabase' && (
+          <div className="max-w-4xl mx-auto space-y-5">
+            {/* Hero Header */}
+            <div>
+              <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                <Database className="w-5 h-5 text-emerald-400" />
+                <span>Lưu Trữ Supabase Cloud & Khắc Phục Render Reset Kênh</span>
+              </h3>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                Lưu trữ 11.186 kênh và toàn bộ kết quả rà soát (Online / Offline) lên Supabase để mỗi khi Render deploy lại không bị mất dữ liệu và không cần quét lại từ đầu.
+              </p>
+            </div>
+
+            {/* Connection Status Card */}
+            <div className={`p-4 rounded-xl border transition ${
+              supabaseStatus?.connected
+                ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-200'
+                : 'bg-amber-950/20 border-amber-500/30 text-amber-200'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className={`p-2 rounded-xl mt-0.5 ${
+                    supabaseStatus?.connected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                  }`}>
+                    {supabaseStatus?.connected ? <CheckCircle className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>{supabaseStatus?.connected ? 'Đã Kết Nối Supabase Cloud Storage' : 'Đang Lưu Trữ File Cục Bộ (Local Storage)'}</span>
+                      {supabaseStatus?.connected && (
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono font-normal">
+                          {supabaseStatus.provider === 'postgres_pool' ? 'PostgreSQL Pooler' : 'Supabase REST API'} • {supabaseStatus.pingMs}ms
+                        </span>
+                      )}
+                    </h4>
+                    <p className="text-xs text-neutral-300 mt-1">
+                      {supabaseStatus?.connected
+                        ? `Đám mây hiện đang lưu ${supabaseStatus.channelCount?.toLocaleString('vi-VN')} kênh. Mọi thay đổi trạng thái sẽ được lưu trữ vĩnh viễn và không bị xóa khi Render khởi động lại!`
+                        : 'Render có cơ chế xoay vòng container (ephemeral disk), mỗi lần deploy lại file trên đĩa sẽ bị đặt lại. Hãy cấu hình Supabase theo hướng dẫn bên dưới để bảo lưu toàn bộ kênh vĩnh viễn.'}
+                    </p>
+                    {supabaseStatus?.configUrlMasked && (
+                      <p className="text-[11px] font-mono text-neutral-400 mt-1 truncate">
+                        Kết nối: {supabaseStatus.configUrlMasked}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleTestSupabaseConnection}
+                    disabled={isSyncingCloud}
+                    className="px-3 py-1.5 rounded-lg text-xs bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-700 flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+                    <span>Kiểm tra kết nối</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Channels & Statuses Overview Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-4 space-y-2">
+                <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Dữ liệu Bộ Nhớ App (Hiện Tại)</span>
+                  <span className="text-amber-400 font-mono text-[11px]">Đang hiển thị</span>
+                </span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-white font-mono">{channels.length.toLocaleString('vi-VN')}</span>
+                  <span className="text-xs text-neutral-400">tổng kênh</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs pt-1 border-t border-neutral-800/60">
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    {activeChannelsCount.toLocaleString('vi-VN')} Online ({totalChannelsCount > 0 ? ((activeChannelsCount / totalChannelsCount) * 100).toFixed(1) : 0}%)
+                  </span>
+                  <span className="text-neutral-500">•</span>
+                  <span className="text-rose-400 font-semibold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-rose-400" />
+                    {offlineChannelsCount.toLocaleString('vi-VN')} Offline
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-4 space-y-2">
+                <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Dữ liệu Đám Mây Supabase</span>
+                  <span className={`font-mono text-[11px] ${supabaseStatus?.connected ? 'text-emerald-400' : 'text-neutral-500'}`}>
+                    {supabaseStatus?.connected ? 'Sẵn sàng' : 'Chưa kết nối'}
+                  </span>
+                </span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-emerald-400 font-mono">
+                    {(supabaseStatus?.channelCount ?? 0).toLocaleString('vi-VN')}
+                  </span>
+                  <span className="text-xs text-neutral-400">kênh trên Supabase</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs pt-1 border-t border-neutral-800/60 text-neutral-400">
+                  <span>Playlist: <strong className="text-white">{supabaseStatus?.playlistCount ?? playlists.length}</strong></span>
+                  <span>•</span>
+                  <span>Bảo lưu Render: <strong className={supabaseStatus?.connected ? 'text-emerald-400' : 'text-amber-400'}>{supabaseStatus?.connected ? 'Được bảo vệ' : 'Chưa bảo vệ'}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions Panel */}
+            <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-4 space-y-3">
+              <h4 className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
+                Thao Tác Đồng Bộ Dữ Liệu
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={handlePushToSupabase}
+                  disabled={isSyncingCloud}
+                  className="p-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-950/30 disabled:opacity-50 cursor-pointer text-left"
+                >
+                  <Upload className={`w-4 h-4 ${isSyncingCloud ? 'animate-bounce' : ''}`} />
+                  <div>
+                    <div className="font-bold">Đẩy ngay {channels.length.toLocaleString('vi-VN')} kênh lên Supabase</div>
+                    <div className="text-[11px] text-emerald-200 font-normal">Lưu đè trạng thái Online/Offline hiện tại vào database</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePullFromSupabase}
+                  disabled={isSyncingCloud}
+                  className="p-3 rounded-xl bg-neutral-800 hover:bg-neutral-750 text-neutral-200 font-semibold text-xs flex items-center justify-center gap-2 transition border border-neutral-700 disabled:opacity-50 cursor-pointer text-left"
+                >
+                  <Download className={`w-4 h-4 ${isSyncingCloud ? 'animate-bounce' : ''}`} />
+                  <div>
+                    <div className="font-bold">Tải dữ liệu từ Supabase về Local</div>
+                    <div className="text-[11px] text-neutral-400 font-normal">Cập nhật bộ nhớ đệm và sao lưu vào data/channels.json</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Step-by-Step Render Deployment Guide */}
+            <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-4 space-y-3">
+              <h4 className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
+                <Server className="w-4 h-4" />
+                <span>3 Bước Cấu Hình Render Để Không Bao Giờ Phải Quét Lại Kênh</span>
+              </h4>
+
+              <div className="space-y-3 text-xs text-neutral-300">
+                <div className="flex gap-2.5 items-start">
+                  <div className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold flex-shrink-0 text-[11px]">
+                    1
+                  </div>
+                  <div>
+                    <strong className="text-white">Tạo Project Supabase (Miễn phí 100%):</strong>
+                    <p className="text-neutral-400 mt-0.5">
+                      Truy cập <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">supabase.com</a>, tạo 1 project mới (chọn khu vực gần Việt Nam như Singapore <code>ap-southeast-1</code> để có ping thấp nhất &lt;30ms).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2.5 items-start">
+                  <div className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold flex-shrink-0 text-[11px]">
+                    2
+                  </div>
+                  <div>
+                    <strong className="text-white">Lấy Chuỗi Kết Nối DATABASE_URL:</strong>
+                    <p className="text-neutral-400 mt-0.5">
+                      Trong Supabase Dashboard: Vào <strong>Project Settings</strong> → <strong>Database</strong> → Cuộn xuống mục <strong>Connection string</strong> → Chọn tab <strong>URI</strong> (sử dụng <strong>Session Pooler port 6543</strong> hoặc Direct port 5432).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2.5 items-start">
+                  <div className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold flex-shrink-0 text-[11px]">
+                    3
+                  </div>
+                  <div>
+                    <strong className="text-white">Điền vào Biến Môi Trường Trên Render.com:</strong>
+                    <p className="text-neutral-400 mt-0.5">
+                      Mở Render Dashboard → Chọn Web Service của bạn → Mục <strong>Environment</strong> → Thêm biến:
+                    </p>
+                    <div className="mt-2 p-2.5 rounded-lg bg-neutral-950 font-mono text-[11px] text-amber-300 border border-neutral-800 space-y-1">
+                      <div>DATABASE_URL = postgresql://postgres.[project-ref]:[mật-khẩu]@aws-0-[region].pooler.supabase.com:6543/postgres</div>
+                      <div className="text-neutral-500 text-[10px]"># Hoặc sử dụng Supabase API Key:</div>
+                      <div>SUPABASE_URL = https://[project-ref].supabase.co</div>
+                      <div>SUPABASE_KEY = [service_role_key_hoặc_anon_key]</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sample = `DATABASE_URL="postgresql://postgres.[YOUR-PROJECT-REF]:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"`;
+                    navigator.clipboard.writeText(sample);
+                    setCopiedEnv(true);
+                    setTimeout(() => setCopiedEnv(false), 2000);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-750 text-neutral-200 text-xs flex items-center gap-1.5 transition border border-neutral-700 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{copiedEnv ? 'Đã sao chép mẫu .env!' : 'Sao chép mẫu biến môi trường Render'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Supabase SQL DDL Schema Script */}
+            <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-emerald-400" />
+                    <span>Script SQL Khởi Tạo Bảng Supabase</span>
+                  </h4>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    (Tùy chọn) Chạy đoạn mã này trong Supabase Dashboard → <strong>SQL Editor</strong> → <strong>Run</strong> để tạo cấu trúc bảng và chỉ mục tối ưu.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/admin/supabase/schema');
+                      const sql = await res.text();
+                      navigator.clipboard.writeText(sql);
+                      setCopiedSchema(true);
+                      setTimeout(() => setCopiedSchema(false), 2000);
+                      showNotification('Đã sao chép mã SQL vào bộ nhớ đệm!');
+                    } catch {
+                      showNotification('Lỗi khi sao chép mã SQL', 'error');
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs flex items-center gap-1.5 transition cursor-pointer flex-shrink-0"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{copiedSchema ? 'Đã sao chép SQL!' : 'Sao chép Script SQL'}</span>
+                </button>
+              </div>
+
+              <pre className="p-3 rounded-lg bg-neutral-950 border border-neutral-800 text-[11px] font-mono text-neutral-300 overflow-x-auto max-h-48 text-left leading-relaxed">
+{`-- 1. Bảng lưu trữ Playlist M3U
+CREATE TABLE IF NOT EXISTS public.playlists (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'url',
+    url TEXT,
+    content TEXT,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    channel_count INT NOT NULL DEFAULT 0,
+    last_updated TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    error_message TEXT
+);
+
+-- 2. Bảng lưu trữ Kênh & Trạng thái hoạt động (Online / Offline)
+CREATE TABLE IF NOT EXISTS public.channels (
+    id TEXT PRIMARY KEY,
+    playlist_id TEXT,
+    name TEXT NOT NULL,
+    "group" TEXT NOT NULL DEFAULT 'Khác',
+    logo TEXT,
+    stream_url TEXT NOT NULL,
+    format TEXT NOT NULL DEFAULT 'hls',
+    tvg_id TEXT,
+    tvg_name TEXT,
+    video_codec TEXT DEFAULT 'h264',
+    audio_codec TEXT DEFAULT 'aac',
+    resolution TEXT DEFAULT 'HD',
+    status TEXT NOT NULL DEFAULT 'active',
+    description TEXT,
+    updated_at TEXT NOT NULL
+);
+
+-- 3. Tạo chỉ mục tối ưu tốc độ tìm kiếm & lọc trạng thái
+CREATE INDEX IF NOT EXISTS idx_channels_status ON public.channels(status);
+CREATE INDEX IF NOT EXISTS idx_channels_group ON public.channels("group");
+CREATE INDEX IF NOT EXISTS idx_channels_playlist ON public.channels(playlist_id);`}
+              </pre>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* --------------------------------------------------------------------- */}
@@ -2251,26 +2371,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
               </div>
             </div>
 
-            {/* Tùy chọn tự động xóa kênh lỗi khi quét */}
-            <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-xl">
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoPurgeOffline}
-                  onChange={(e) => setAutoPurgeOffline(e.target.checked)}
-                  className="mt-0.5 rounded text-rose-500 focus:ring-0"
-                />
-                <div>
-                  <div className="text-xs font-semibold text-rose-300 flex items-center gap-1.5">
-                    <span>Tự động xóa vĩnh viễn các kênh lỗi sau khi quét xong</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-400 mt-0.5">
-                    Tất cả kênh chết / không kết nối được sẽ tự động bị loại bỏ hoàn toàn khỏi hệ thống mà không cần thao tác xóa thủ công.
-                  </p>
-                </div>
-              </label>
-            </div>
-
             {/* Actions */}
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
               <button
@@ -2312,445 +2412,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
             </div>
             <div className="p-4">
               <VideoPlayer channel={previewChannel} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Render Storage & Persistence Guide Modal */}
-      {isStorageModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl my-8 flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="p-4 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-indigo-950 border border-indigo-800 flex items-center justify-center text-indigo-400">
-                  <Cloud className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">
-                    Hướng Dẫn Giữ Kết Quả Quét Khi Render Auto-Deploy
-                  </h3>
-                  <p className="text-[11px] text-neutral-400">
-                    Giải pháp để không phải quét lại danh sách kênh mỗi khi Render triển khai phiên bản mới
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsStorageModalOpen(false)}
-                className="text-neutral-400 hover:text-white p-1.5 rounded-xl hover:bg-neutral-800 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div className="p-5 overflow-y-auto space-y-5 text-xs text-neutral-300 leading-relaxed">
-              {/* Status Box */}
-              <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
-                storageInfo?.hasDatabaseUrl
-                  ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-200'
-                  : 'bg-amber-950/40 border-amber-800/80 text-amber-200'
-              }`}>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${storageInfo?.hasDatabaseUrl ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                    <span className="font-bold text-xs">
-                      {storageInfo?.hasDatabaseUrl
-                        ? 'ĐÃ KẾT NỐI POSTGRESQL (LƯU TRỮ VĨNH VIỄN)'
-                        : 'HIỆN TẠI: ĐANG DÙNG TẬP TIN TẠM THỜI (EPHEMERAL JSON)'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-neutral-300">
-                    {storageInfo?.hasDatabaseUrl
-                      ? 'Dữ liệu kênh và kết quả quét được lưu trong database PostgreSQL bên ngoài. Khi Render redeploy, mọi kết quả quét vẫn còn nguyên vẹn 100%!'
-                      : 'Trên Render, mỗi lần tự động redeploy, container cũ bị hủy và tạo mới từ Git -> kết quả quét bị reset. Chọn 1 trong 3 cách dưới đây để khắc phục triệt để:'}
-                  </p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <span className="text-[11px] text-neutral-400 block">Kênh hiện có:</span>
-                  <span className="text-sm font-bold text-white">
-                    {channels.length.toLocaleString('vi-VN')} ({channels.filter(c => c.status === 'active').length} sống / {channels.filter(c => c.status === 'offline').length} lỗi)
-                  </span>
-                </div>
-              </div>
-
-              {/* Giải pháp 1: Render PostgreSQL (Khuyên dùng số 1) */}
-              <div className="p-4 bg-neutral-950 border border-indigo-900/60 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-bold text-[10px]">
-                      CÁCH 1 (KHUYÊN DÙNG NHẤT - 100% MIỄN PHÍ)
-                    </span>
-                    <h4 className="font-bold text-white text-xs">Kết nối Render PostgreSQL Database</h4>
-                  </div>
-                  <span className="text-[10px] text-emerald-400 font-semibold">Tự động 100%</span>
-                </div>
-
-                <p className="text-neutral-400 text-[11px]">
-                  Render cung cấp cơ sở dữ liệu PostgreSQL miễn phí. Khi kết nối, ứng dụng sẽ tự động nạp kênh vào PostgreSQL và lưu vĩnh viễn mọi kết quả quét:
-                </p>
-
-                <ol className="list-decimal list-inside space-y-2 text-[11px] text-neutral-300 pl-1">
-                  <li>
-                    Đăng nhập <strong>dashboard.render.com</strong>, bấm nút <strong>New +</strong> (góc phải trên) &rarr; Chọn <strong>PostgreSQL</strong>.
-                  </li>
-                  <li>
-                    Đặt tên (vd: <code className="px-1.5 py-0.5 bg-neutral-900 rounded font-mono text-amber-300">my-iptv-db</code>), chọn Region (ví dụ <strong>Singapore</strong>), chọn gói <strong>Free Instance</strong> &rarr; Bấm <strong>Create Database</strong>.
-                  </li>
-                  <li>
-                    Chờ khoảng 30 giây để Render tạo xong. Cuộn xuống phần <strong>Connections</strong>:
-                    <div className="mt-1 pl-4 text-neutral-400">
-                      &bull; Nếu ứng dụng web cùng nằm trên Render: Copy dòng <strong>Internal Database URL</strong> (tốc độ kết nối cực nhanh).<br />
-                      &bull; Hoặc copy dòng <strong>External Database URL</strong>.
-                    </div>
-                  </li>
-                  <li>
-                    Mở Web Service của bạn trên Render &rarr; Vào tab <strong>Environment</strong> &rarr; Bấm <strong>Add Environment Variable</strong>:
-                    <div className="mt-1.5 flex items-center gap-2 bg-neutral-900 p-2 rounded-lg border border-neutral-800 font-mono text-xs">
-                      <span className="text-amber-400 font-bold">DATABASE_URL</span>
-                      <span className="text-neutral-500">=</span>
-                      <span className="text-emerald-400 truncate flex-1">postgres://user:password@host/dbname</span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyText('DATABASE_URL', 'Biến DATABASE_URL')}
-                        className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded text-[10px] flex items-center gap-1"
-                      >
-                        <Copy className="w-3 h-3" />
-                        <span>{copiedText === 'Biến DATABASE_URL' ? 'Đã copy' : 'Copy tên'}</span>
-                      </button>
-                    </div>
-                  </li>
-                  <li>
-                    Bấm <strong>Save Changes</strong>. Render sẽ tự redeploy và ứng dụng sẽ <strong>tự động seed/nhập toàn bộ kênh</strong> vào Postgres!
-                  </li>
-                </ol>
-
-                <div className="p-2.5 bg-emerald-950/30 border border-emerald-900/50 rounded-lg text-[11px] text-emerald-300">
-                  ✨ <strong>Ưu điểm:</strong> Một lần thiết lập xong là từ nay về sau Render tự deploy thoải mái mà danh sách kênh sống/chết không bao giờ bị mất!
-                </div>
-              </div>
-
-              {/* Giải pháp 2: Xóa kênh lỗi & Lưu channels.json sạch vào Git */}
-              <div className="p-4 bg-neutral-950 border border-neutral-800 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold text-[10px]">
-                      CÁCH 2 (KHÔNG CẦN DATABASE)
-                    </span>
-                    <h4 className="font-bold text-white text-xs">Xóa Kênh Lỗi & Tải channels.json Sạch Để Commit Vào Git</h4>
-                  </div>
-                  <span className="text-[10px] text-neutral-400">Đơn giản, trực tiếp</span>
-                </div>
-
-                <p className="text-neutral-400 text-[11px]">
-                  Nếu bạn không muốn tạo database bên ngoài, bạn có thể lọc sạch kênh lỗi một lần và commit file sạch vào kho Git của bạn:
-                </p>
-
-                <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-neutral-300 pl-1">
-                  <li>Bấm nút <strong>"Quét Rà Soát Kênh"</strong> để hệ thống tìm ra toàn bộ kênh chết.</li>
-                  <li>Bấm nút <strong>"Xóa kênh lỗi"</strong> (hoặc bật tùy chọn tự động xóa khi quét) để loại bỏ hoàn toàn các kênh chết.</li>
-                  <li>Bấm nút <strong>"Tải JSON sạch"</strong> bên dưới để tải file <code className="text-amber-300 font-mono">channels.json</code> về máy tính của bạn.</li>
-                  <li>Chép đè file vừa tải vào thư mục <code className="text-amber-300 font-mono">data/channels.json</code> trong dự án mã nguồn trên máy bạn.</li>
-                  <li>Mở Terminal trên máy tính và chạy lệnh commit đẩy lên GitHub:</li>
-                </ol>
-
-                <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800 font-mono text-[11px] text-neutral-200 flex items-center justify-between">
-                  <code>git add data/channels.json && git commit -m "Loc kenh loi" && git push</code>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyText('git add data/channels.json && git commit -m "Loc kenh loi" && git push', 'Lệnh Git')}
-                    className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded text-[10px] flex items-center gap-1 flex-shrink-0 ml-2"
-                  >
-                    <Copy className="w-3 h-3" />
-                    <span>{copiedText === 'Lệnh Git' ? 'Đã copy' : 'Copy lệnh'}</span>
-                  </button>
-                </div>
-
-                {/* Tải nhanh file */}
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleExportCleanJson}
-                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-lg text-xs flex items-center gap-1.5 transition"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Tải Về channels.json Sạch</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleExportCleanM3u}
-                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-medium flex items-center gap-1.5 transition"
-                  >
-                    <Download className="w-3.5 h-3.5 text-neutral-400" />
-                    <span>Tải Về M3U Sạch (.m3u)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Giải pháp 3: Render Persistent Disk */}
-              <div className="p-4 bg-neutral-950 border border-neutral-800 rounded-xl space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-neutral-800 text-neutral-300 border border-neutral-700 font-bold text-[10px]">
-                    CÁCH 3 (GÓI RENDER STARTER)
-                  </span>
-                  <h4 className="font-bold text-white text-xs">Gắn Render Persistent Disk</h4>
-                </div>
-                <p className="text-neutral-400 text-[11px]">
-                  Nếu Web Service của bạn là gói trả phí (từ $7/tháng), vào Service &rarr; Tab <strong>Disks</strong> &rarr; Bấm <strong>Add Disk</strong>:
-                  Mount Path điền <code className="px-1 bg-neutral-900 rounded font-mono text-amber-300">/opt/render/project/src/data</code>. Mọi file trong thư mục data sẽ được giữ nguyên vĩnh viễn trên ổ cứng.
-                </p>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-neutral-950 border-t border-neutral-800 flex items-center justify-between">
-              <span className="text-[11px] text-neutral-500">
-                Gợi ý: Dùng Cách 1 (Render Postgres) hoặc Cách 2 (Tải JSON sạch) để giải quyết ngay lập tức.
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsStorageModalOpen(false)}
-                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-semibold transition"
-              >
-                Đã Hiểu, Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* GitHub Sync Modal */}
-      {isGitHubModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl my-8 flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="p-4 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-950 border border-emerald-800 flex items-center justify-center text-emerald-400">
-                  <GitBranch className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">
-                    Đồng Bộ Toàn Bộ Dữ Liệu Kênh Lên GitHub (1 Chạm)
-                  </h3>
-                  <p className="text-[11px] text-neutral-400">
-                    Tự động tạo commit chứa dữ liệu sau khi rà soát lên kho GitHub để Render tự deploy lại
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsGitHubModalOpen(false)}
-                className="text-neutral-400 hover:text-white p-1.5 rounded-xl hover:bg-neutral-800 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div className="p-5 overflow-y-auto space-y-4 text-xs text-neutral-300">
-              {/* Thống kê dữ liệu đã quét */}
-              <div className="p-3.5 bg-neutral-950 border border-neutral-800 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[11px] text-neutral-400 block font-medium">Trạng thái dữ liệu hiện tại:</span>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="font-bold text-white text-sm">
-                      {channels.length.toLocaleString('vi-VN')} kênh
-                    </span>
-                    <span className="text-emerald-400 text-xs font-semibold">
-                      ({channels.filter(c => c.status === 'active').length.toLocaleString('vi-VN')} hoạt động
-                    </span>
-                    <span className="text-rose-400 text-xs font-semibold">
-                      / {channels.filter(c => c.status === 'offline').length.toLocaleString('vi-VN')} lỗi)
-                    </span>
-                  </div>
-                </div>
-                <div className="px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 font-bold text-[11px] flex items-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Đã quét xong</span>
-                </div>
-              </div>
-
-              {/* Form đồng bộ */}
-              <form onSubmit={handleSyncToGitHub} className="space-y-3.5">
-                {/* Repository Input */}
-                <div>
-                  <label className="block text-xs font-semibold text-neutral-200 mb-1">
-                    GitHub Repository <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={githubRepoInput}
-                    onChange={(e) => setGithubRepoInput(e.target.value)}
-                    placeholder="ví dụ: lamphongstbg/my-iptv"
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500"
-                  />
-                  <p className="text-[10px] text-neutral-500 mt-0.5">
-                    Định dạng: <code>tên-user/tên-repository</code> nơi bạn kết nối với Render
-                  </p>
-                </div>
-
-                {/* Branch Input */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-neutral-200 mb-1">
-                      Nhánh (Branch)
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={githubBranchInput}
-                      onChange={(e) => setGithubBranchInput(e.target.value)}
-                      placeholder="main"
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 font-mono"
-                    />
-                  </div>
-
-                  {/* Mode Selector */}
-                  <div>
-                    <label className="block text-xs font-semibold text-neutral-200 mb-1">
-                      Dữ liệu kênh muốn đẩy lên
-                    </label>
-                    <select
-                      value={githubSyncMode}
-                      onChange={(e) => setGithubSyncMode(e.target.value as any)}
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
-                    >
-                      <option value="clean_only">Chỉ kênh sống (Khuyên dùng - 6.574 kênh)</option>
-                      <option value="all">Toàn bộ kênh (11.186 kênh kèm trạng thái)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Token Input */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-semibold text-neutral-200">
-                      GitHub Personal Access Token (PAT) <span className="text-rose-400">*</span>
-                    </label>
-                    <a
-                      href="https://github.com/settings/tokens/new?scopes=repo&description=IPTV-Auto-Sync"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] text-emerald-400 hover:underline flex items-center gap-1"
-                    >
-                      <span>Tạo token GitHub nhanh</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                  <input
-                    type="password"
-                    required
-                    value={githubTokenInput}
-                    onChange={(e) => setGithubTokenInput(e.target.value)}
-                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 font-mono"
-                  />
-                  <p className="text-[10px] text-neutral-500 mt-0.5">
-                    Token cần có quyền <strong>repo</strong> (hoặc <strong>Contents: Read and write</strong>). Token chỉ lưu tạm trên trình duyệt của bạn.
-                  </p>
-                </div>
-
-                {/* Nút bấm đồng bộ */}
-                <button
-                  type="submit"
-                  disabled={isSyncingGitHub}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-lg mt-2"
-                >
-                  <GitCommit className={`w-4 h-4 ${isSyncingGitHub ? 'animate-spin' : ''}`} />
-                  <span>
-                    {isSyncingGitHub
-                      ? 'Đang đẩy dữ liệu lên GitHub (vui lòng chờ vài giây)...'
-                      : `Đẩy Ngay ${githubSyncMode === 'clean_only' ? '6.574 Kênh Sạch' : '11.186 Kênh'} Lên GitHub`}
-                  </span>
-                </button>
-              </form>
-
-              {/* Thông báo kết quả sau khi đẩy thành công */}
-              {githubSyncResult && (
-                <div className="p-3.5 bg-emerald-950/60 border border-emerald-800 rounded-xl space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
-                    <CheckCircle className="w-4 h-4 text-emerald-400" />
-                    <span>{githubSyncResult.message}</span>
-                  </div>
-                  {githubSyncResult.commitUrl && (
-                    <a
-                      href={githubSyncResult.commitUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:underline font-medium"
-                    >
-                      <span>Mở xem commit trên GitHub</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
-                  <p className="text-[10px] text-neutral-400">
-                    ✨ Render đã nhận tín hiệu commit mới từ GitHub và đang tự động tiến hành deploy phiên bản này!
-                  </p>
-                </div>
-              )}
-
-              {/* Lựa chọn tải thủ công thay thế */}
-              <div className="pt-3 border-t border-neutral-800 space-y-2">
-                <span className="text-[11px] text-neutral-400 font-semibold block">
-                  Hoặc bạn có thể tải file dữ liệu về máy để tự Git Push thủ công:
-                </span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleExportCleanJson}
-                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-lg text-xs flex items-center gap-1.5 transition"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Tải channels.json sạch (6.574 kênh)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleExportFullJson}
-                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-medium flex items-center gap-1.5 transition"
-                  >
-                    <Download className="w-3.5 h-3.5 text-neutral-400" />
-                    <span>Tải channels.json đầy đủ (11.186 kênh)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleExportCleanM3u}
-                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-medium flex items-center gap-1.5 transition"
-                  >
-                    <Download className="w-3.5 h-3.5 text-neutral-400" />
-                    <span>Tải M3U sạch</span>
-                  </button>
-                </div>
-
-                <div className="bg-neutral-950 p-2.5 rounded-lg border border-neutral-800 font-mono text-[11px] text-neutral-300 flex items-center justify-between mt-2">
-                  <code>git add data/channels.json && git commit -m "Cap nhat kenh da quet" && git push</code>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyText('git add data/channels.json && git commit -m "Cap nhat kenh da quet" && git push', 'Lệnh Git')}
-                    className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded text-[10px] flex items-center gap-1 flex-shrink-0 ml-2"
-                  >
-                    <Copy className="w-3 h-3" />
-                    <span>{copiedText === 'Lệnh Git' ? 'Đã copy' : 'Copy lệnh'}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-3.5 bg-neutral-950 border-t border-neutral-800 flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => setIsGitHubModalOpen(false)}
-                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-semibold transition"
-              >
-                Đóng
-              </button>
             </div>
           </div>
         </div>

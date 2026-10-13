@@ -10,8 +10,14 @@ import { getPlaylists } from './src/db/storage.js';
 import { detectDevice } from './utils/deviceDetector.js';
 import { renderLegacyHome, renderLegacyChannel, renderLegacyNotFound, renderCorePlayerGuide } from './views/legacyRenderer.js';
 import dotenv from 'dotenv';
+import dns from 'node:dns';
 
-dotenv.config();
+// Force Node.js to prefer IPv4 over IPv6 on cloud providers like Render that do not support outbound IPv6
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  // ignore if unsupported
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
