@@ -208,11 +208,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     if (!token) return;
     setIsLoading(true);
     try {
+      const ts = Date.now();
       const [statsRes, playlistsRes, channelsRes, sbStatusRes] = await Promise.all([
-        fetch('/api/admin/stats', { headers: authHeaders() }),
-        fetch('/api/admin/playlists', { headers: authHeaders() }),
-        fetch('/api/admin/channels', { headers: authHeaders() }),
-        fetch('/api/admin/supabase/status', { headers: authHeaders() }).catch(() => null),
+        fetch(`/api/admin/stats?_t=${ts}`, { headers: authHeaders() }),
+        fetch(`/api/admin/playlists?_t=${ts}`, { headers: authHeaders() }),
+        fetch(`/api/admin/channels?_t=${ts}`, { headers: authHeaders() }),
+        fetch(`/api/admin/supabase/status?_t=${ts}`, { headers: authHeaders() }).catch(() => null),
       ]);
 
       if (statsRes.status === 401 || playlistsRes.status === 401) {
@@ -629,9 +630,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
   });
 
   // Channel count statistics
-  const totalChannelsCount = channels.length;
-  const activeChannelsCount = channels.filter((c) => c.status !== 'offline').length;
-  const offlineChannelsCount = channels.filter((c) => c.status === 'offline').length;
+  // Luôn đồng bộ chuẩn xác với kết quả rà soát vừa hoàn thành hoặc thống kê thời gian thực từ server
+  const hasValidScanStats = Boolean(
+    scanProgress &&
+    scanProgress.scanned > 0 &&
+    scanProgress.scanned === scanProgress.total &&
+    (scanProgress.onlineCount + scanProgress.offlineCount === scanProgress.total)
+  );
+
+  const totalChannelsCount = hasValidScanStats
+    ? scanProgress!.total
+    : (stats?.totalChannels ?? channels.length);
+
+  const activeChannelsCount = hasValidScanStats
+    ? scanProgress!.onlineCount
+    : (stats?.activeChannels ?? channels.filter((c) => c.status !== 'offline').length);
+
+  const offlineChannelsCount = hasValidScanStats
+    ? scanProgress!.offlineCount
+    : (stats?.offlineChannels ?? channels.filter((c) => c.status === 'offline').length);
 
   // Channel Pagination State
   const [currentPage, setCurrentPage] = useState<number>(1);

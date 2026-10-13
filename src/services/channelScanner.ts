@@ -275,6 +275,13 @@ export async function startBatchScan(options?: {
         } catch {
           activeScan.progress.scanned++;
           activeScan.progress.offlineCount++;
+          try {
+            await updateChannel(channel.id, {
+              status: 'offline',
+              description: `Không khả dụng (${new Date().toLocaleDateString('vi-VN')})`,
+              updated_at: new Date().toISOString(),
+            });
+          } catch {}
         }
       }
     }
