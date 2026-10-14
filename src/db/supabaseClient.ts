@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import type { Channel, Playlist } from '../types/iptv.js';
+import type { Channel, Playlist, SubtitleTrackInfo } from '../types/iptv.js';
 
 const { Pool } = pg;
 
@@ -244,13 +244,20 @@ async function initPostgresSchema(pool: pg.Pool) {
       resolution TEXT,
       status TEXT NOT NULL DEFAULT 'active',
       description TEXT,
+      has_subtitles BOOLEAN DEFAULT false,
+      subtitle_tracks JSONB DEFAULT '[]'::jsonb,
       updated_at TEXT NOT NULL
     );
+
+    -- Migrations for existing deployments
+    ALTER TABLE channels ADD COLUMN IF NOT EXISTS has_subtitles BOOLEAN DEFAULT false;
+    ALTER TABLE channels ADD COLUMN IF NOT EXISTS subtitle_tracks JSONB DEFAULT '[]'::jsonb;
 
     CREATE INDEX IF NOT EXISTS idx_channels_status ON channels(status);
     CREATE INDEX IF NOT EXISTS idx_channels_group ON channels("group");
     CREATE INDEX IF NOT EXISTS idx_channels_playlist ON channels(playlist_id);
     CREATE INDEX IF NOT EXISTS idx_channels_updated_at ON channels(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_channels_has_subtitles ON channels(has_subtitles);
   `);
 }
 
@@ -348,9 +355,9 @@ export async function bulkUpsertCloudChannels(
         const placeholders: string[] = [];
 
         batch.forEach((ch, idx) => {
-          const base = idx * 15;
+          const base = idx * 17;
           placeholders.push(
-            `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15})`
+            `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15}, $${base + 16}, $${base + 17})`
           );
           values.push(
             ch.id,
@@ -367,6 +374,8 @@ export async function bulkUpsertCloudChannels(
             ch.resolution || 'HD',
             ch.status || 'active',
             ch.description || null,
+            ch.has_subtitles ?? false,
+            JSON.stringify(ch.subtitle_tracks || []),
             ch.updated_at || new Date().toISOString()
           );
         });
@@ -374,7 +383,8 @@ export async function bulkUpsertCloudChannels(
         const sql = `
           INSERT INTO channels (
             id, playlist_id, name, "group", logo, stream_url, format,
-            tvg_id, tvg_name, video_codec, audio_codec, resolution, status, description, updated_at
+            tvg_id, tvg_name, video_codec, audio_codec, resolution, status, description,
+            has_subtitles, subtitle_tracks, updated_at
           ) VALUES ${placeholders.join(', ')}
           ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
@@ -389,6 +399,8 @@ export async function bulkUpsertCloudChannels(
             resolution = EXCLUDED.resolution,
             status = EXCLUDED.status,
             description = EXCLUDED.description,
+            has_subtitles = EXCLUDED.has_subtitles,
+            subtitle_tracks = EXCLUDED.subtitle_tracks,
             updated_at = EXCLUDED.updated_at
         `;
 
@@ -427,6 +439,8 @@ export async function bulkUpsertCloudChannels(
           resolution: ch.resolution || 'HD',
           status: ch.status || 'active',
           description: ch.description || null,
+          has_subtitles: ch.has_subtitles ?? false,
+          subtitle_tracks: ch.subtitle_tracks || [],
           updated_at: ch.updated_at || new Date().toISOString(),
         }));
 
@@ -503,19 +517,33 @@ export async function bulkUpsertCloudPlaylists(playlists: Playlist[]): Promise<b
  * Buffers channel updates and applies them in a single multi-row UPDATE query
  */
 export async function bulkUpdateCloudChannelStatuses(
-  updates: Array<{ id: string; status: 'active' | 'offline'; description?: string; updated_at: string }>
+  updates: Array<{
+    id: string;
+    status: 'active' | 'offline';
+    description?: string;
+    has_subtitles?: boolean;
+    subtitle_tracks?: SubtitleTrackInfo[];
+    updated_at: string;
+  }>
 ): Promise<boolean> {
   if (updates.length === 0) return true;
 
   if (pgPool) {
     try {
-      // Build a multi-row VALUES list: (id, status, description, updated_at)
+      // Build a multi-row VALUES list: (id, status, description, has_subtitles, subtitle_tracks, updated_at)
       const values: any[] = [];
       const rows: string[] = [];
       updates.forEach((u, i) => {
-        const b = i * 4;
-        rows.push(`($${b + 1}::text, $${b + 2}::text, $${b + 3}::text, $${b + 4}::text)`);
-        values.push(u.id, u.status, u.description || null, u.updated_at);
+        const b = i * 6;
+        rows.push(`($${b + 1}::text, $${b + 2}::text, $${b + 3}::text, $${b + 4}::boolean, $${b + 5}::jsonb, $${b + 6}::text)`);
+        values.push(
+          u.id,
+          u.status,
+          u.description || null,
+          u.has_subtitles !== undefined ? u.has_subtitles : null,
+          u.subtitle_tracks ? JSON.stringify(u.subtitle_tracks) : null,
+          u.updated_at
+        );
       });
 
       const sql = `
@@ -523,8 +551,10 @@ export async function bulkUpdateCloudChannelStatuses(
         SET
           status = v.status,
           description = v.description,
+          has_subtitles = COALESCE(v.has_subtitles, c.has_subtitles, false),
+          subtitle_tracks = COALESCE(v.subtitle_tracks, c.subtitle_tracks, '[]'::jsonb),
           updated_at = v.updated_at
-        FROM (VALUES ${rows.join(', ')}) AS v(id, status, description, updated_at)
+        FROM (VALUES ${rows.join(', ')}) AS v(id, status, description, has_subtitles, subtitle_tracks, updated_at)
         WHERE c.id = v.id
       `;
 
@@ -537,12 +567,21 @@ export async function bulkUpdateCloudChannelStatuses(
 
   if (supabaseClient) {
     try {
-      const payload = updates.map((u) => ({
-        id: u.id,
-        status: u.status,
-        description: u.description || null,
-        updated_at: u.updated_at,
-      }));
+      const payload = updates.map((u) => {
+        const item: any = {
+          id: u.id,
+          status: u.status,
+          description: u.description || null,
+          updated_at: u.updated_at,
+        };
+        if (u.has_subtitles !== undefined) {
+          item.has_subtitles = u.has_subtitles;
+        }
+        if (u.subtitle_tracks !== undefined) {
+          item.subtitle_tracks = u.subtitle_tracks;
+        }
+        return item;
+      });
       const { error } = await supabaseClient.from('channels').upsert(payload, { onConflict: 'id' });
       if (!error) return true;
     } catch (err) {
@@ -593,14 +632,21 @@ CREATE TABLE IF NOT EXISTS public.channels (
     resolution TEXT DEFAULT 'HD',
     status TEXT NOT NULL DEFAULT 'active',
     description TEXT,
+    has_subtitles BOOLEAN DEFAULT false,
+    subtitle_tracks JSONB DEFAULT '[]'::jsonb,
     updated_at TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Migration nếu bảng đã tồn tại sẵn
+ALTER TABLE public.channels ADD COLUMN IF NOT EXISTS has_subtitles BOOLEAN DEFAULT false;
+ALTER TABLE public.channels ADD COLUMN IF NOT EXISTS subtitle_tracks JSONB DEFAULT '[]'::jsonb;
 
 -- 3. Tạo chỉ mục tối ưu tốc độ tìm kiếm & lọc trạng thái
 CREATE INDEX IF NOT EXISTS idx_channels_status ON public.channels(status);
 CREATE INDEX IF NOT EXISTS idx_channels_group ON public.channels("group");
 CREATE INDEX IF NOT EXISTS idx_channels_playlist ON public.channels(playlist_id);
+CREATE INDEX IF NOT EXISTS idx_channels_has_subtitles ON public.channels(has_subtitles);
 CREATE INDEX IF NOT EXISTS idx_channels_name_trgm ON public.channels(name);
 
 -- 4. Bật quyền truy cập công khai (nếu sử dụng Supabase Anon Key)

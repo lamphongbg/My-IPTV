@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import type { Channel, Playlist, StreamTestResult } from '../types/iptv.js';
+import type { Channel, Playlist, StreamTestResult, SubtitleTrackInfo } from '../types/iptv.js';
 import { parseM3U } from '../../utils/m3uParser.js';
 import {
   initCloudDatabase,
@@ -87,6 +87,8 @@ function seedDefaultData() {
     channelsCache = initialChannels.map((c) => ({
       ...c,
       playlist_id: c.playlist_id || 'default-playlist',
+      has_subtitles: c.has_subtitles ?? Boolean(c.subtitle_tracks && c.subtitle_tracks.length > 0),
+      subtitle_tracks: Array.isArray(c.subtitle_tracks) ? c.subtitle_tracks : [],
       updated_at: c.updated_at || new Date().toISOString(),
     }));
   }
@@ -134,6 +136,15 @@ function loadFileState() {
     } catch (m3uErr) {
       console.error('[Storage] Error reading channels.m3u:', m3uErr);
     }
+  }
+
+  // Normalize all channels to ensure subtitle fields are defined
+  if (channelsCache.length > 0) {
+    channelsCache = channelsCache.map((c) => ({
+      ...c,
+      has_subtitles: c.has_subtitles ?? Boolean(c.subtitle_tracks && c.subtitle_tracks.length > 0),
+      subtitle_tracks: Array.isArray(c.subtitle_tracks) ? c.subtitle_tracks : [],
+    }));
   }
 
   // If playlistsCache is empty, or channelsCache was empty, run seedDefaultData
@@ -185,15 +196,19 @@ export function saveFileState(immediate = false) {
 // STATUS UPDATE BUFFERING (For high-speed batch channel scanning)
 // -----------------------------------------------------------------------------
 
-let pendingCloudUpdates: Array<{ id: string; status: 'active' | 'offline'; description?: string; updated_at: string }> = [];
-let cloudFlushTimer: NodeJS.Timeout | null = null;
-
-export function queueCloudStatusUpdate(update: {
+export interface CloudStatusUpdateItem {
   id: string;
   status: 'active' | 'offline';
   description?: string;
+  has_subtitles?: boolean;
+  subtitle_tracks?: SubtitleTrackInfo[];
   updated_at: string;
-}) {
+}
+
+let pendingCloudUpdates: Array<CloudStatusUpdateItem> = [];
+let cloudFlushTimer: NodeJS.Timeout | null = null;
+
+export function queueCloudStatusUpdate(update: CloudStatusUpdateItem) {
   pendingCloudUpdates.push(update);
   if (pendingCloudUpdates.length >= 60) {
     flushCloudStatusUpdates();
@@ -405,6 +420,8 @@ export async function createChannel(data: Partial<Channel>): Promise<Channel> {
     resolution: data.resolution || 'HD',
     status: data.status || 'active',
     description: data.description || '',
+    has_subtitles: data.has_subtitles ?? false,
+    subtitle_tracks: data.subtitle_tracks || [],
     updated_at: new Date().toISOString(),
   };
 
@@ -422,6 +439,8 @@ export async function updateChannel(id: string, data: Partial<Channel>): Promise
   const updated: Channel = {
     ...existing,
     ...data,
+    has_subtitles: data.has_subtitles !== undefined ? data.has_subtitles : (existing.has_subtitles ?? false),
+    subtitle_tracks: data.subtitle_tracks !== undefined ? data.subtitle_tracks : (existing.subtitle_tracks || []),
     updated_at: data.updated_at || new Date().toISOString(),
   };
 
@@ -437,6 +456,8 @@ export async function updateChannel(id: string, data: Partial<Channel>): Promise
       id,
       status: (updated.status === 'offline' ? 'offline' : 'active') as 'active' | 'offline',
       description: updated.description || undefined,
+      has_subtitles: updated.has_subtitles,
+      subtitle_tracks: updated.subtitle_tracks,
       updated_at: updated.updated_at || new Date().toISOString(),
     });
   } else {
@@ -444,6 +465,11 @@ export async function updateChannel(id: string, data: Partial<Channel>): Promise
   }
 
   return updated;
+}
+
+export async function getChannelsWithSubtitles(): Promise<Channel[]> {
+  const active = await getAllActiveChannels();
+  return active.filter((c) => c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0));
 }
 
 export async function deleteChannel(id: string): Promise<boolean> {

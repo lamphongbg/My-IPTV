@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Channel } from '../types/iptv';
 import { isNokiaLightweightBrowser, getVlcLaunchUrl, launchVlcPlayer } from '../utils/deviceHelper';
-import { X, Copy, Check, ExternalLink, Play, Tv, ShieldCheck, Smartphone, Download, ChevronRight, Sliders, Zap } from 'lucide-react';
+import { X, Copy, Check, ExternalLink, Play, Tv, ShieldCheck, Smartphone, Download, ChevronRight, Sliders, Zap, Subtitles } from 'lucide-react';
 
 interface ChannelDetailsModalProps {
   channel: Channel | null;
@@ -22,6 +22,10 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
   const [urlMode, setUrlMode] = useState<'original' | 'e72'>('original');
 
   if (!channel) return null;
+
+  const hasSubtitles = Boolean(
+    channel.has_subtitles || (channel.subtitle_tracks && channel.subtitle_tracks.length > 0)
+  );
 
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const e72StreamUrl = `${currentOrigin}/api/channel/${channel.id}/e72.ts`;
@@ -54,7 +58,15 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
               </div>
             )}
             <div>
-              <h3 className="text-base font-semibold text-white leading-tight">{channel.name}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-semibold text-white leading-tight">{channel.name}</h3>
+                {hasSubtitles && (
+                  <span className="text-[10px] font-bold text-cyan-300 bg-cyan-950/90 border border-cyan-500/40 px-1.5 py-0.5 rounded flex items-center gap-1 shadow-sm">
+                    <Subtitles className="w-3 h-3 text-cyan-400" />
+                    <span>CC</span>
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-neutral-400">Nhóm: {channel.group}</p>
             </div>
           </div>
@@ -351,6 +363,21 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
               </div>
               <div>
                 Audio Codec: <strong className="text-neutral-200">{channel.audio_codec || 'AAC'}</strong>
+              </div>
+              <div className="col-span-2">
+                Phụ đề (Subtitles):{' '}
+                {hasSubtitles ? (
+                  <span className="inline-flex items-center gap-1.5 text-cyan-400 font-medium">
+                    <Subtitles className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>
+                      {channel.subtitle_tracks && channel.subtitle_tracks.length > 0
+                        ? `Có phụ đề [CC] (${channel.subtitle_tracks.map((t) => t.name || t.lang || t.type).join(', ')})`
+                        : 'Có phụ đề [CC]'}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-neutral-500">Chưa ghi nhận phụ đề</span>
+                )}
               </div>
               <div className="col-span-2">
                 Trạng thái: <span className="inline-flex items-center gap-1 text-emerald-400"><ShieldCheck className="w-3.5 h-3.5" /> Hoạt động</span>

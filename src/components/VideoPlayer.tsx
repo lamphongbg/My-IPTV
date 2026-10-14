@@ -13,13 +13,74 @@ import {
   Volume2,
   VolumeX,
   Maximize,
+  Minimize,
+  Crop,
+  Tv,
   ShieldCheck,
   Zap,
   Download,
   Smartphone,
   Sliders,
-  Check
+  Check,
+  Subtitles,
+  Sparkles
 } from 'lucide-react';
+import {
+  SubtitleEngine,
+  SubtitleDisplayMode,
+  SubtitleFontSize,
+  SubtitleTrackInfo,
+  SubtitleCueItem,
+  cleanCueText,
+  translateSubtitleText,
+} from '../services/subtitleTranslator';
+import { SubtitleOverlay } from './SubtitleOverlay';
+import { SubtitleMenu } from './SubtitleMenu';
+
+export type AspectRatioMode = 'contain' | 'cover' | 'fill' | '16:9' | '4:3' | '21:9';
+
+interface AspectRatioOption {
+  id: AspectRatioMode;
+  label: string;
+  description: string;
+  badge?: string;
+}
+
+const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
+  {
+    id: 'contain',
+    label: 'Chuẩn đài (Vừa vặn cân đối)',
+    description: 'Giữ nguyên 100% tỷ lệ gốc của đài phát, không méo hình, cân bằng tuyệt đối trên mọi màn hình',
+    badge: 'Mặc định',
+  },
+  {
+    id: 'cover',
+    label: 'Lấp đầy màn hình (Zoom không viền đen)',
+    description: 'Phóng to tràn màn hình, cắt viền đen trên MacBook 16:10, UltraWide 21:9 & điện thoại',
+    badge: 'Tràn viền',
+  },
+  {
+    id: 'fill',
+    label: 'Kéo giãn toàn màn hình (Stretch)',
+    description: 'Kéo giãn 100% chiều ngang & dọc phủ kín màn hình, không mất góc hình',
+  },
+  {
+    id: '16:9',
+    label: 'Tỷ lệ 16:9 Widescreen Chuẩn',
+    description: 'Ép chuẩn tỷ lệ 16:9, khắc phục các kênh anamorphic 720x576 bị co bẹp',
+  },
+  {
+    id: '4:3',
+    label: 'Tỷ lệ 4:3 Cổ điển (TV Vuông)',
+    description: 'Tỷ lệ tivi truyền thống cho phim xưa, tư liệu, có viền đen 2 bên đối xứng',
+  },
+  {
+    id: '21:9',
+    label: 'Tỷ lệ 21:9 Điện ảnh (Cinema UltraWide)',
+    description: 'Chuẩn màn ảnh rộng rạp chiếu phim, tuyệt đẹp cho màn hình UltraWide',
+    badge: 'Cinema',
+  },
+];
 
 interface HlsQualityLevel {
   index: number;
@@ -35,6 +96,7 @@ interface VideoPlayerProps {
   playTrigger?: number;
   onOpenDetails?: (channel: Channel) => void;
   isNokiaLightweight?: boolean;
+  onChannelUpdate?: (channel: Channel) => void;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -42,11 +104,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   playTrigger = 0,
   onOpenDetails,
   isNokiaLightweight,
+  onChannelUpdate,
 }) => {
   const isNokia = isNokiaLightweight ?? isNokiaLightweightBrowser();
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+
+  // Keep live channel reference and avoid duplicate saves
+  const channelRef = useRef(channel);
+  useEffect(() => {
+    channelRef.current = channel;
+  }, [channel]);
+  const persistedChannelIdsRef = useRef<Set<string>>(new Set());
 
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -68,6 +138,383 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const resolutionMenuRef = useRef<HTMLDivElement>(null);
   const resolutionNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [menuPositionStyle, setMenuPositionStyle] = useState<React.CSSProperties>({});
+
+  // Fullscreen & HUD overlay states
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [showControls, setShowControls] = useState<boolean>(true);
+  const hideControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Aspect ratio state (support 5 professional IPTV aspect ratio modes)
+  const [aspectMode, setAspectMode] = useState<AspectRatioMode>(() => {
+    try {
+      const saved = localStorage.getItem('iptv_aspect_ratio');
+      if (saved && ['contain', 'cover', 'fill', '16:9', '4:3', '21:9'].includes(saved)) {
+        return saved as AspectRatioMode;
+      }
+    } catch {}
+    return 'contain';
+  });
+  const [isAspectMenuOpen, setIsAspectMenuOpen] = useState<boolean>(false);
+  const aspectMenuRef = useRef<HTMLDivElement>(null);
+  const [aspectNotice, setAspectNotice] = useState<string | null>(null);
+  const aspectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Real-time Subtitle & Translation states (HLS CUE_ENTER + Google / Gemini AI)
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('iptv_subtitles_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [subtitleEngine, setSubtitleEngine] = useState<SubtitleEngine>(() => {
+    try {
+      const saved = localStorage.getItem('iptv_subtitle_engine');
+      if (saved === 'gemini' || saved === 'google') return saved;
+    } catch {}
+    return 'google';
+  });
+  const [subtitleDisplayMode, setSubtitleDisplayMode] = useState<SubtitleDisplayMode>(() => {
+    try {
+      const saved = localStorage.getItem('iptv_subtitle_mode');
+      if (saved === 'dual' || saved === 'translated' || saved === 'original') return saved;
+    } catch {}
+    return 'dual';
+  });
+  const [subtitleTargetLang, setSubtitleTargetLang] = useState<string>(() => {
+    try {
+      return localStorage.getItem('iptv_subtitle_target_lang') || 'vi';
+    } catch {
+      return 'vi';
+    }
+  });
+  const [subtitleFontSize, setSubtitleFontSize] = useState<SubtitleFontSize>(() => {
+    try {
+      const saved = localStorage.getItem('iptv_subtitle_font_size');
+      if (saved === 'sm' || saved === 'md' || saved === 'lg') return saved;
+    } catch {}
+    return 'md';
+  });
+  const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrackInfo[]>([]);
+  const [selectedSubtitleTrackId, setSelectedSubtitleTrackId] = useState<number>(-1);
+  const [currentSubtitle, setCurrentSubtitle] = useState<SubtitleCueItem | null>(null);
+  const [isSubtitleMenuOpen, setIsSubtitleMenuOpen] = useState<boolean>(false);
+  const subtitleMenuRef = useRef<HTMLDivElement>(null);
+  const subtitleClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCueTextRef = useRef<string>('');
+  const lastCueTimeRef = useRef<number>(0);
+
+  // Synchronize subtitle refs for stable access in HLS event callbacks
+  const subtitlesEnabledRef = useRef(subtitlesEnabled);
+  useEffect(() => {
+    subtitlesEnabledRef.current = subtitlesEnabled;
+    try {
+      localStorage.setItem('iptv_subtitles_enabled', subtitlesEnabled ? 'true' : 'false');
+    } catch {}
+  }, [subtitlesEnabled]);
+
+  const subtitleEngineRef = useRef(subtitleEngine);
+  useEffect(() => {
+    subtitleEngineRef.current = subtitleEngine;
+    try {
+      localStorage.setItem('iptv_subtitle_engine', subtitleEngine);
+    } catch {}
+  }, [subtitleEngine]);
+
+  const subtitleTargetLangRef = useRef(subtitleTargetLang);
+  useEffect(() => {
+    subtitleTargetLangRef.current = subtitleTargetLang;
+    try {
+      localStorage.setItem('iptv_subtitle_target_lang', subtitleTargetLang);
+    } catch {}
+  }, [subtitleTargetLang]);
+
+  // Auto-persist detected subtitles (CEA-608 or HLS tracks) to the backend database
+  const persistDetectedSubtitles = useCallback(
+    async (
+      detectedTracks: Array<{ name?: string; lang?: string; type?: string; isDefault?: boolean }>,
+      sourceInfo = 'CEA-608'
+    ) => {
+      const currentChannel = channelRef.current;
+      if (!currentChannel || !currentChannel.id) return;
+
+      const existing = currentChannel.subtitle_tracks || [];
+      const hasCeaAlready = currentChannel.has_subtitles && existing.some((t) => t.type === 'cea608');
+
+      const persistKey = `${currentChannel.id}_${detectedTracks.map((t) => t.name || t.type).join('_')}`;
+      if (persistedChannelIdsRef.current.has(persistKey)) {
+        return;
+      }
+      if (hasCeaAlready && existing.length >= detectedTracks.length) {
+        return;
+      }
+      persistedChannelIdsRef.current.add(persistKey);
+
+      try {
+        console.log(
+          `[VideoPlayer] 🎯 Nhận diện luồng ${sourceInfo} lúc xem thực tế ("${currentChannel.name}"). Đang tự động lưu phụ đề...`
+        );
+        const res = await fetch(`/api/channels/${encodeURIComponent(currentChannel.id)}/subtitles`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            has_subtitles: true,
+            subtitle_tracks: detectedTracks,
+          }),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.channel) {
+            console.log(
+              `[VideoPlayer] ✅ Đã tự động cập nhật phụ đề ${sourceInfo} cho kênh "${currentChannel.name}".`
+            );
+            if (onChannelUpdate) {
+              onChannelUpdate(json.channel);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[VideoPlayer] Lỗi tự động lưu phụ đề:', err);
+      }
+    },
+    [onChannelUpdate]
+  );
+
+  // Subtitle cue processing & translation handler
+  const handleProcessCueText = useCallback(
+    async (rawText: string, originatingTrack?: TextTrack | null) => {
+      const cleaned = cleanCueText(rawText);
+      if (!cleaned) return;
+
+      // Prevent rapid duplicate cues within 1.5s
+      const now = Date.now();
+      if (cleaned === lastCueTextRef.current && now - lastCueTimeRef.current < 1500) {
+        return;
+      }
+      lastCueTextRef.current = cleaned;
+      lastCueTimeRef.current = now;
+
+      // Auto-record CEA-608 on real cue reception during playback if not already marked
+      const curChannel = channelRef.current;
+      if (
+        curChannel &&
+        (!curChannel.has_subtitles ||
+          !curChannel.subtitle_tracks ||
+          curChannel.subtitle_tracks.length === 0)
+      ) {
+        const trackName = originatingTrack?.label || 'Phụ đề ẩn CEA-608 (Closed Captions)';
+        const trackLang = originatingTrack?.language || subtitleTargetLangRef.current || 'vi';
+        persistDetectedSubtitles(
+          [
+            {
+              name: trackName,
+              lang: trackLang,
+              type: 'cea608',
+              isDefault: true,
+            },
+          ],
+          'CEA-608 (Cues thực tế)'
+        );
+      }
+
+      if (!subtitlesEnabledRef.current) {
+        return;
+      }
+
+      const cueId = `cue_${now}_${Math.random().toString(36).substring(2, 6)}`;
+      setCurrentSubtitle({
+        id: cueId,
+        originalText: cleaned,
+        translatedText: '',
+        targetLang: subtitleTargetLangRef.current,
+        engine: subtitleEngineRef.current,
+        timestamp: now,
+        active: true,
+        isLoading: true,
+      });
+
+      if (subtitleClearTimerRef.current) {
+        clearTimeout(subtitleClearTimerRef.current);
+      }
+
+      try {
+        const res = await translateSubtitleText(
+          cleaned,
+          subtitleTargetLangRef.current,
+          subtitleEngineRef.current
+        );
+        setCurrentSubtitle((prev) => {
+          if (prev && prev.id === cueId) {
+            return {
+              ...prev,
+              translatedText: res.translatedText,
+              detectedLang: res.detectedLang,
+              latencyMs: res.latencyMs,
+              isLoading: false,
+            };
+          }
+          return prev;
+        });
+      } catch (err) {
+        console.warn('[VideoPlayer] Subtitle translation error:', err);
+        setCurrentSubtitle((prev) => (prev && prev.id === cueId ? { ...prev, isLoading: false } : prev));
+      }
+
+      // Auto clear cue after 5.5 seconds if no new speech cue arrives
+      subtitleClearTimerRef.current = setTimeout(() => {
+        setCurrentSubtitle((prev) => (prev && prev.id === cueId ? { ...prev, active: false } : prev));
+      }, 5500);
+    },
+    [persistDetectedSubtitles]
+  );
+
+  const handleToggleSubtitles = useCallback(() => {
+    setSubtitlesEnabled((prev) => {
+      const next = !prev;
+      if (!next && subtitleClearTimerRef.current) {
+        clearTimeout(subtitleClearTimerRef.current);
+        setCurrentSubtitle(null);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectSubtitleTrack = useCallback((trackId: number) => {
+    setSelectedSubtitleTrackId(trackId);
+    if (trackId >= 1000) {
+      // Custom native TextTrack (CEA-608)
+      if (hlsRef.current) {
+        hlsRef.current.subtitleTrack = -1;
+      }
+      if (videoRef.current && videoRef.current.textTracks) {
+        const realIdx = trackId - 1000;
+        const tracks = videoRef.current.textTracks;
+        for (let i = 0; i < tracks.length; i++) {
+          tracks[i].mode = i === realIdx ? 'hidden' : 'disabled';
+        }
+      }
+    } else {
+      // Hls manifest subtitle track
+      if (hlsRef.current) {
+        hlsRef.current.subtitleTrack = trackId;
+      }
+      if (videoRef.current && videoRef.current.textTracks) {
+        const tracks = videoRef.current.textTracks;
+        for (let i = 0; i < tracks.length; i++) {
+          tracks[i].mode = trackId === -1 ? 'disabled' : 'hidden';
+        }
+      }
+    }
+  }, []);
+
+  // Auto-hide controls in fullscreen after 3s of inactivity
+  const resetControlsTimer = useCallback(() => {
+    setShowControls(true);
+    if (hideControlsTimerRef.current) {
+      clearTimeout(hideControlsTimerRef.current);
+    }
+    if (isFullscreen) {
+      hideControlsTimerRef.current = setTimeout(() => {
+        if (!isResolutionMenuOpen && !isAspectMenuOpen && !isSubtitleMenuOpen) {
+          setShowControls(false);
+        }
+      }, 3000);
+    }
+  }, [isFullscreen, isResolutionMenuOpen, isAspectMenuOpen, isSubtitleMenuOpen]);
+
+  useEffect(() => {
+    if (isFullscreen) {
+      resetControlsTimer();
+    } else {
+      setShowControls(true);
+      if (hideControlsTimerRef.current) {
+        clearTimeout(hideControlsTimerRef.current);
+      }
+    }
+  }, [isFullscreen, resetControlsTimer]);
+
+  // Fullscreen change listener across browsers
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isFs = Boolean(
+        document.fullscreenElement === playerContainerRef.current ||
+        (document as any).webkitFullscreenElement === playerContainerRef.current ||
+        (document as any).mozFullScreenElement === playerContainerRef.current ||
+        (document as any).msFullscreenElement === playerContainerRef.current
+      );
+      setIsFullscreen(isFs);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, []);
+
+  // Click outside to close aspect ratio menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        aspectMenuRef.current &&
+        !aspectMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsAspectMenuOpen(false);
+      }
+    };
+    if (isAspectMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAspectMenuOpen]);
+
+  // Click outside to close subtitle menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        subtitleMenuRef.current &&
+        !subtitleMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsSubtitleMenuOpen(false);
+      }
+    };
+    if (isSubtitleMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isSubtitleMenuOpen]);
+
+  // Aspect ratio selection handler with user notification
+  const handleSelectAspectMode = useCallback((mode: AspectRatioMode) => {
+    setAspectMode(mode);
+    setIsAspectMenuOpen(false);
+    try {
+      localStorage.setItem('iptv_aspect_ratio', mode);
+    } catch {}
+    const labels: Record<AspectRatioMode, string> = {
+      contain: 'Chuẩn đài / Cân đối (Vừa vặn)',
+      cover: 'Lấp đầy màn hình (Cắt viền đen)',
+      fill: 'Kéo giãn toàn màn hình',
+      '16:9': 'Tỷ lệ 16:9 Widescreen',
+      '4:3': 'Tỷ lệ 4:3 Cổ điển',
+      '21:9': 'Tỷ lệ 21:9 Điện ảnh Cinema',
+    };
+    if (aspectNoticeTimerRef.current) clearTimeout(aspectNoticeTimerRef.current);
+    setAspectNotice(labels[mode]);
+    aspectNoticeTimerRef.current = setTimeout(() => {
+      setAspectNotice(null);
+    }, 2200);
+  }, []);
 
   // Dynamic positioning for resolution menu to prevent clipping on narrow screens
   const updateMenuPosition = useCallback(() => {
@@ -194,6 +641,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       setErrorMessage('');
       setIsLoading(true);
 
+      // Initialize subtitle tracks from channel data if available
+      if (channel.subtitle_tracks && channel.subtitle_tracks.length > 0) {
+        setSubtitleTracks(
+          channel.subtitle_tracks.map((t, idx) => ({
+            id: typeof t.id === 'number' ? t.id : idx,
+            name: t.name || `Phụ đề ${idx + 1}`,
+            lang: t.lang || '',
+            type: t.type,
+            default: t.isDefault || t.default,
+          }))
+        );
+      } else {
+        setSubtitleTracks([]);
+      }
+
       // Clean up previous HLS instance safely
       if (hlsRef.current) {
         try {
@@ -231,6 +693,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           lowLatencyMode: false,
           backBufferLength: 60,
           maxBufferLength: 30,
+          enableCEA708Captions: true,
+          renderTextTracksNatively: false,
           xhrSetup: (xhr) => {
             xhr.withCredentials = false;
           },
@@ -239,6 +703,157 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         hls.loadSource(effectiveSource);
         hls.attachMedia(video);
+
+        // Subtitle track updates from Hls stream
+        hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (_event, data) => {
+          if (data && Array.isArray(data.subtitleTracks)) {
+            const parsedTracks: SubtitleTrackInfo[] = data.subtitleTracks.map((t, idx) => ({
+              id: idx,
+              name: t.name || `Phụ đề ${idx + 1}`,
+              lang: t.lang || '',
+              type: t.type,
+              default: t.default,
+            }));
+            setSubtitleTracks((prev) => {
+              const ceaTracks = prev.filter((p) => p.type === 'cea608');
+              return [...parsedTracks, ...ceaTracks];
+            });
+
+            if (subtitlesEnabledRef.current && hls.subtitleTrack === -1 && parsedTracks.length > 0) {
+              hls.subtitleTrack = 0;
+              setSelectedSubtitleTrackId(0);
+            }
+
+            const curChannel = channelRef.current;
+            if (
+              parsedTracks.length > 0 &&
+              curChannel &&
+              (!curChannel.has_subtitles ||
+                !curChannel.subtitle_tracks ||
+                curChannel.subtitle_tracks.length === 0)
+            ) {
+              persistDetectedSubtitles(
+                parsedTracks.map((t) => ({
+                  name: t.name,
+                  lang: t.lang,
+                  type: (t.type as any) || 'embedded',
+                  isDefault: t.default,
+                })),
+                'HLS Subtitle Manifest'
+              );
+            }
+          }
+        });
+
+        hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, (_event, data) => {
+          setSelectedSubtitleTrackId(data.id);
+        });
+
+        // Scan HTML5 textTracks on video element (detects CEA-608 & VTT)
+        const scanAndRecordTextTracks = () => {
+          const tracks = video.textTracks;
+          if (!tracks) return;
+
+          const foundCeaTracks: SubtitleTrackInfo[] = [];
+
+          for (let i = 0; i < tracks.length; i++) {
+            const track = tracks[i];
+            track.mode = 'hidden'; // Hide default native browser black box
+
+            track.oncuechange = () => {
+              if (track.activeCues && track.activeCues.length > 0) {
+                const cue = track.activeCues[0] as any;
+                if (cue && cue.text) {
+                  handleProcessCueText(cue.text, track);
+                }
+              }
+            };
+
+            const isCaption = track.kind === 'captions' || track.kind === 'subtitles';
+            const label = track.label || '';
+            const isCea = isCaption || /cc|608|708|caption|closed/i.test(label);
+
+            if (isCea) {
+              const trackName =
+                label ||
+                (track.kind === 'captions' ? `Phụ đề ẩn CEA-608 (CC${i + 1})` : `Phụ đề ${i + 1}`);
+              foundCeaTracks.push({
+                id: 1000 + i,
+                name: trackName,
+                lang: track.language || 'vi',
+                type: 'cea608',
+                default: i === 0,
+              });
+            }
+          }
+
+          if (foundCeaTracks.length > 0) {
+            setSubtitleTracks((prev) => {
+              const merged = [...prev];
+              for (const cea of foundCeaTracks) {
+                if (!merged.some((p) => p.name === cea.name || (p.type === 'cea608' && p.lang === cea.lang))) {
+                  merged.push(cea);
+                }
+              }
+              return merged;
+            });
+
+            // Automatically persist CEA-608 detected tracks to database
+            persistDetectedSubtitles(
+              foundCeaTracks.map((t) => ({
+                name: t.name,
+                lang: t.lang,
+                type: 'cea608',
+                isDefault: t.default,
+              })),
+              'CEA-608 TextTrack'
+            );
+          }
+        };
+
+        const setupTextTracksFallback = () => {
+          scanAndRecordTextTracks();
+          const tracks = video.textTracks;
+          if (!tracks) return;
+
+          tracks.onaddtrack = (e: TrackEvent) => {
+            const track = e.track as TextTrack | null;
+            if (track) {
+              track.mode = 'hidden';
+              track.oncuechange = () => {
+                if (track.activeCues && track.activeCues.length > 0) {
+                  const cue = track.activeCues[0] as any;
+                  if (cue && cue.text) {
+                    handleProcessCueText(cue.text, track);
+                  }
+                }
+              };
+              scanAndRecordTextTracks();
+            }
+          };
+        };
+        setupTextTracksFallback();
+
+        // Real-time subtitle cue arrival (Hls.Events.CUE_ENTER & CUES_PARSED)
+        const cueEnterEvent = ((Hls.Events as any).CUE_ENTER || (Hls.Events as any).EVENT_CUE_ENTER || 'hlsEventCueEnter') as any;
+        hls.on(cueEnterEvent, (_event: any, data: any) => {
+          const cue = data?.cue || data;
+          const text = cue?.text || (typeof cue === 'string' ? cue : '');
+          if (text) {
+            handleProcessCueText(text);
+          }
+        });
+
+        hls.on(Hls.Events.CUES_PARSED, (_event: any, data: any) => {
+          if (data && Array.isArray(data.cues)) {
+            data.cues.forEach((c: any) => {
+              if (c && c.text) {
+                handleProcessCueText(c.text);
+              }
+            });
+            scanAndRecordTextTracks();
+          }
+        });
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setIsLoading(false);
@@ -398,6 +1013,57 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (isHlsStream && video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = effectiveSource;
         video.load();
+
+        // Native Safari CEA-608 & TextTrack listener
+        const scanNativeTracks = () => {
+          const tracks = video.textTracks;
+          if (!tracks) return;
+          const foundCeaTracks: SubtitleTrackInfo[] = [];
+          for (let i = 0; i < tracks.length; i++) {
+            const track = tracks[i];
+            track.mode = 'hidden';
+            track.oncuechange = () => {
+              if (track.activeCues && track.activeCues.length > 0) {
+                const cue = track.activeCues[0] as any;
+                if (cue && cue.text) handleProcessCueText(cue.text, track);
+              }
+            };
+            const isCaption = track.kind === 'captions' || track.kind === 'subtitles';
+            const label = track.label || '';
+            const isCea = isCaption || /cc|608|708|caption|closed/i.test(label);
+            if (isCea) {
+              const trackName =
+                label || (track.kind === 'captions' ? `Phụ đề ẩn CEA-608 (CC${i + 1})` : `Phụ đề ${i + 1}`);
+              foundCeaTracks.push({
+                id: 1000 + i,
+                name: trackName,
+                lang: track.language || 'vi',
+                type: 'cea608',
+                default: i === 0,
+              });
+            }
+          }
+          if (foundCeaTracks.length > 0) {
+            setSubtitleTracks((prev) => {
+              const merged = [...prev];
+              for (const cea of foundCeaTracks) {
+                if (!merged.some((p) => p.name === cea.name || (p.type === 'cea608' && p.lang === cea.lang))) {
+                  merged.push(cea);
+                }
+              }
+              return merged;
+            });
+            persistDetectedSubtitles(
+              foundCeaTracks.map((t) => ({ name: t.name, lang: t.lang, type: 'cea608', isDefault: t.default })),
+              'CEA-608 Safari Native'
+            );
+          }
+        };
+
+        scanNativeTracks();
+        if (video.textTracks) {
+          video.textTracks.onaddtrack = () => scanNativeTracks();
+        }
         video
           .play()
           .then(() => {
@@ -661,12 +1327,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } else if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         handleToggleFullscreen();
+      } else if (e.key === 'r' || e.key === 'R' || e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        const modes: AspectRatioMode[] = ['contain', 'cover', 'fill', '16:9', '4:3', '21:9'];
+        const nextIdx = (modes.indexOf(aspectMode) + 1) % modes.length;
+        handleSelectAspectMode(modes[nextIdx]);
+      } else if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        handleToggleSubtitles();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleTogglePlay, handleToggleMute, handleToggleFullscreen]);
+  }, [handleTogglePlay, handleToggleMute, handleToggleFullscreen, aspectMode, handleSelectAspectMode, handleToggleSubtitles]);
 
   const handleVideoMediaError = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
@@ -708,13 +1382,134 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   return (
     <div
       ref={playerContainerRef}
-      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl flex flex-col relative"
+      onMouseMove={resetControlsTimer}
+      onTouchStart={resetControlsTimer}
+      className={`${
+        isFullscreen
+          ? 'fixed inset-0 w-screen h-screen bg-black z-[9999] overflow-hidden flex flex-col justify-between'
+          : 'w-full bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl flex flex-col relative'
+      } ${isFullscreen && !showControls ? 'cursor-none' : 'cursor-auto'}`}
     >
+      {/* Fullscreen Top Floating Bar */}
+      {isFullscreen && (
+        <div
+          className={`absolute top-0 inset-x-0 p-4 sm:p-5 bg-gradient-to-b from-black/90 via-black/50 to-transparent z-40 transition-opacity duration-300 flex items-center justify-between gap-4 ${
+            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            {channel.logo ? (
+              <img
+                src={channel.logo}
+                alt={channel.name}
+                className="w-9 h-9 object-contain bg-black/60 rounded-lg p-0.5 border border-white/20 flex-shrink-0"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="w-9 h-9 bg-neutral-800 border border-neutral-700 rounded-lg flex items-center justify-center font-bold text-amber-400 text-xs flex-shrink-0">
+                IPTV
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-base font-bold text-white leading-tight truncate">
+                  {channel.name}
+                </h2>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  {channel.group}
+                </span>
+                {useProxy && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3" />
+                    Proxy Bật
+                  </span>
+                )}
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-950/80 text-sky-300 border border-sky-700/60 font-mono">
+                  {activeResolutionLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const modes: AspectRatioMode[] = ['contain', 'cover', 'fill', '16:9', '4:3', '21:9'];
+                    const nextIdx = (modes.indexOf(aspectMode) + 1) % modes.length;
+                    handleSelectAspectMode(modes[nextIdx]);
+                  }}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold bg-neutral-800/90 hover:bg-neutral-700 text-amber-300 hover:text-amber-200 border border-neutral-700 font-mono transition cursor-pointer flex items-center gap-1 active:scale-95"
+                  title="Nhấn để đổi tỷ lệ khung hình (Phím R)"
+                >
+                  <Crop className="w-2.5 h-2.5 text-amber-400" />
+                  <span>Tỷ lệ: {aspectMode === 'contain' ? 'Chuẩn đài' : aspectMode === 'cover' ? 'Lấp đầy' : aspectMode === 'fill' ? 'Kéo giãn' : aspectMode}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleSubtitles();
+                  }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border font-mono transition cursor-pointer flex items-center gap-1 active:scale-95 ${
+                    subtitlesEnabled
+                      ? 'bg-amber-500/25 text-amber-300 border-amber-500/60 hover:bg-amber-500/35'
+                      : 'bg-neutral-800/90 hover:bg-neutral-700 text-neutral-400 border-neutral-700'
+                  }`}
+                  title="Nhấn để Bật/Tắt phụ đề & Dịch AI (Phím C)"
+                >
+                  <Subtitles className="w-2.5 h-2.5 text-amber-400" />
+                  <span>CC: {subtitlesEnabled ? `Dịch ${subtitleTargetLang.toUpperCase()}` : 'Tắt'}</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-neutral-300 truncate mt-0.5">
+                {channel.description || `Định dạng ${channel.format.toUpperCase()} • Codec ${channel.video_codec || 'H.264'} / ${channel.audio_codec || 'AAC'}`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={handleToggleFullscreen}
+              className="px-3 py-1.5 bg-neutral-800/80 hover:bg-neutral-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md border border-neutral-700 transition cursor-pointer"
+              title="Thoát chế độ toàn màn hình (Esc hoặc F)"
+            >
+              <Minimize className="w-4 h-4 text-amber-400" />
+              <span className="hidden sm:inline">Thoát toàn màn hình</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Video Canvas Container */}
-      <div className="relative w-full aspect-video bg-black flex items-center justify-center group overflow-hidden rounded-t-xl">
+      <div
+        className={`relative w-full bg-black flex items-center justify-center group overflow-hidden ${
+          isFullscreen
+            ? 'w-full h-full flex-1 max-h-screen'
+            : 'aspect-video rounded-t-xl'
+        }`}
+      >
         <video
           ref={videoRef}
-          className="w-full h-full object-contain pointer-events-none select-none"
+          className={`${
+            aspectMode === 'cover'
+              ? 'w-full h-full object-cover object-center'
+              : aspectMode === 'fill'
+              ? 'w-full h-full object-fill'
+              : aspectMode === '16:9'
+              ? isFullscreen
+                ? 'w-full h-full max-w-[calc(100dvh*16/9)] max-h-[calc(100dvw*9/16)] aspect-video object-fill mx-auto my-auto'
+                : 'w-full h-full object-fill aspect-video'
+              : aspectMode === '4:3'
+              ? isFullscreen
+                ? 'w-full h-full max-w-[calc(100dvh*4/3)] max-h-[calc(100dvw*3/4)] aspect-[4/3] object-fill mx-auto my-auto'
+                : 'h-full aspect-[4/3] object-fill mx-auto'
+              : aspectMode === '21:9'
+              ? isFullscreen
+                ? 'w-full h-full max-w-[calc(100dvh*21/9)] max-h-[calc(100dvw*9/21)] aspect-[21/9] object-fill mx-auto my-auto'
+                : 'w-full aspect-[21/9] object-fill mx-auto'
+              : 'w-full h-full object-contain mx-auto my-auto'
+          } pointer-events-none select-none transition-all duration-200`}
           playsInline
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
@@ -727,13 +1522,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onError={handleVideoMediaError}
         />
 
+        {/* Real-time Subtitle & Translation Broadcast Overlay */}
+        <SubtitleOverlay
+          currentSubtitle={currentSubtitle}
+          displayMode={subtitleDisplayMode}
+          fontSize={subtitleFontSize}
+          enabled={subtitlesEnabled}
+          isFullscreen={isFullscreen}
+        />
+
         {/* Full-surface Screen Click Overlay (Click anywhere to pause/play, double-click for fullscreen) */}
         {!hasError && !isLoading && (
           <div
             className="absolute inset-0 z-10 cursor-pointer flex items-center justify-center select-none"
             onClick={handleTogglePlay}
             onDoubleClick={handleToggleFullscreen}
-            title={isPlaying ? 'Nhấn vào màn hình để tạm dừng (Space)' : 'Nhấn vào màn hình để phát tiếp (Space)'}
           >
             {/* Transient Animated Feedback Icon (Pause ⏸ / Play ▶) */}
             {feedbackIcon && (
@@ -779,6 +1582,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-neutral-900/95 text-amber-300 px-4 py-2 rounded-full font-bold text-xs flex items-center gap-2 shadow-2xl border border-amber-500/50 pointer-events-none animate-pulse">
             <Sliders className="w-3.5 h-3.5 text-sky-400" />
             <span>{resolutionNotice}</span>
+          </div>
+        )}
+
+        {/* On-screen Aspect Ratio Notice */}
+        {aspectNotice && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 bg-neutral-900/95 text-amber-300 px-4 py-2 rounded-full font-bold text-xs flex items-center gap-2 shadow-2xl border border-amber-500/50 pointer-events-none animate-pulse">
+            <Crop className="w-3.5 h-3.5 text-amber-400" />
+            <span>Tỷ lệ: {aspectNotice}</span>
           </div>
         )}
 
@@ -892,7 +1703,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       </div>
 
       {/* Player Meta Info Bar */}
-      <div className="p-3.5 bg-neutral-900 border-t border-neutral-800 rounded-b-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div
+        className={`${
+          isFullscreen
+            ? `absolute bottom-0 inset-x-0 p-4 sm:p-5 bg-gradient-to-t from-black/95 via-black/75 to-transparent z-40 transition-opacity duration-300 ${
+                showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`
+            : 'p-3.5 bg-neutral-900 border-t border-neutral-800 rounded-b-xl'
+        } flex flex-col md:flex-row md:items-center justify-between gap-3`}
+      >
         <div className="flex items-center gap-3">
           {channel.logo ? (
             <img
@@ -1180,6 +1999,132 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             )}
           </div>
 
+          {/* Aspect Ratio Selector (Cân đối tỷ lệ khung hình màn hình) */}
+          <div className="relative" ref={aspectMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsAspectMenuOpen(!isAspectMenuOpen)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition border ${
+                isAspectMenuOpen
+                  ? 'bg-amber-950/80 text-amber-200 border-amber-600'
+                  : aspectMode !== 'contain'
+                  ? 'bg-amber-950/60 text-amber-300 border-amber-700/60 hover:bg-amber-900/60'
+                  : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white'
+              }`}
+              title="Tùy chọn tỷ lệ khung hình (Phím R): Chuẩn đài, Lấp đầy (Cover), Kéo giãn (Stretch), 16:9, 4:3"
+            >
+              <Crop className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Tỷ lệ:</span>
+              <span className="font-bold text-amber-300">
+                {aspectMode === 'contain'
+                  ? 'Vừa vặn'
+                  : aspectMode === 'cover'
+                  ? 'Lấp đầy'
+                  : aspectMode === 'fill'
+                  ? 'Kéo giãn'
+                  : aspectMode}
+              </span>
+            </button>
+
+            {isAspectMenuOpen && (
+              <div
+                className="absolute bottom-full mb-2 right-0 w-64 bg-neutral-950/95 backdrop-blur-xl border border-neutral-800 rounded-xl p-2 shadow-2xl z-50 animate-fadeIn"
+              >
+                <div className="text-[11px] font-bold text-neutral-400 px-2 py-1 uppercase tracking-wider border-b border-neutral-800/80 mb-1 flex items-center justify-between">
+                  <span>Tỷ Lệ Màn Hình</span>
+                  <span className="text-[10px] text-amber-400 font-mono">Phím R</span>
+                </div>
+                <div className="space-y-1">
+                  {ASPECT_RATIO_OPTIONS.map((opt) => {
+                    const isSelected = aspectMode === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleSelectAspectMode(opt.id)}
+                        className={`w-full p-2 rounded-lg flex items-center justify-between transition text-left gap-2 ${
+                          isSelected
+                            ? 'bg-amber-950/70 border border-amber-600/70 text-amber-200'
+                            : 'hover:bg-neutral-900 text-neutral-300'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-xs flex items-center gap-1.5">
+                            <span>{opt.label}</span>
+                            {opt.badge && (
+                              <span className="text-[9px] px-1.5 py-0.2 bg-amber-500/20 text-amber-300 rounded font-medium">
+                                {opt.badge}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-neutral-400 mt-0.5 line-clamp-1">
+                            {opt.description}
+                          </div>
+                        </div>
+                        {isSelected && <Check className="w-4 h-4 text-amber-400 flex-shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Subtitles & AI Translation Menu Button */}
+          <div className="relative" ref={subtitleMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsSubtitleMenuOpen(!isSubtitleMenuOpen)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition border ${
+                isSubtitleMenuOpen
+                  ? 'bg-amber-950/80 text-amber-200 border-amber-600'
+                  : subtitlesEnabled
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30'
+                  : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white'
+              }`}
+              title="Cài đặt Phụ đề & Dịch AI Trực tiếp (Phím C)"
+            >
+              <Subtitles className={`w-3.5 h-3.5 ${subtitlesEnabled ? 'text-amber-400' : 'text-neutral-400'}`} />
+              <span className="hidden sm:inline">Phụ đề:</span>
+              <span className="font-bold">
+                {subtitlesEnabled ? (
+                  <span className="text-amber-300 flex items-center gap-1">
+                    <span>{subtitleTargetLang.toUpperCase()}</span>
+                    {subtitleEngine === 'gemini' ? (
+                      <Sparkles className="w-2.5 h-2.5 text-violet-400" />
+                    ) : (
+                      <Zap className="w-2.5 h-2.5 text-emerald-400" />
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-neutral-400">Tắt</span>
+                )}
+              </span>
+            </button>
+
+            <SubtitleMenu
+              isOpen={isSubtitleMenuOpen}
+              onClose={() => setIsSubtitleMenuOpen(false)}
+              enabled={subtitlesEnabled}
+              onToggleEnabled={handleToggleSubtitles}
+              engine={subtitleEngine}
+              onChangeEngine={(eng) => setSubtitleEngine(eng)}
+              displayMode={subtitleDisplayMode}
+              onChangeDisplayMode={(m) => setSubtitleDisplayMode(m)}
+              targetLang={subtitleTargetLang}
+              onChangeTargetLang={(l) => setSubtitleTargetLang(l)}
+              fontSize={subtitleFontSize}
+              onChangeFontSize={(s) => setSubtitleFontSize(s)}
+              tracks={subtitleTracks}
+              selectedTrackId={selectedSubtitleTrackId}
+              onSelectTrack={handleSelectSubtitleTrack}
+              onTriggerSampleCue={(sampleText) => {
+                if (!subtitlesEnabled) setSubtitlesEnabled(true);
+                handleProcessCueText(sampleText);
+              }}
+            />
+          </div>
+
           <button
             type="button"
             onClick={handleTogglePlay}
@@ -1188,16 +2133,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           >
             {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
             <span className="hidden sm:inline">{isPlaying ? 'Tạm dừng' : 'Phát'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="px-2.5 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs flex items-center gap-1.5 border border-neutral-700 transition hover:border-amber-500/50"
-            title="Tải lại luồng phát video (khởi động lại stream nếu bị giật, đứng hình)"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isLoading ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline font-medium">Tải lại</span>
           </button>
 
           <button
@@ -1248,10 +2183,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <button
             type="button"
             onClick={handleToggleFullscreen}
-            className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg text-xs border border-neutral-700 transition"
-            title="Toàn màn hình"
+            className={`p-1.5 rounded-lg text-xs transition border ${
+              isFullscreen
+                ? 'bg-amber-500 text-neutral-950 border-amber-400 font-bold'
+                : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-neutral-700'
+            }`}
+            title={isFullscreen ? 'Thoát toàn màn hình (Esc hoặc F)' : 'Toàn màn hình (F)'}
           >
-            <Maximize className="w-3.5 h-3.5" />
+            {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
           </button>
 
           {onOpenDetails && (

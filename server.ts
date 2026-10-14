@@ -6,6 +6,7 @@ import channelsRouter, { getAllChannels, getAllGroups, getChannelById } from './
 import playerRouter from './routes/player.js';
 import adminRouter from './routes/admin.js';
 import proxyRouter from './routes/proxy.js';
+import translateRouter from './routes/translate.js';
 import { getPlaylists } from './src/db/storage.js';
 import { detectDevice } from './utils/deviceDetector.js';
 import { renderLegacyHome, renderLegacyChannel, renderLegacyNotFound, renderCorePlayerGuide } from './views/legacyRenderer.js';
@@ -147,6 +148,7 @@ app.use(channelsRouter);
 app.use(playerRouter);
 app.use(adminRouter);
 app.use(proxyRouter);
+app.use(translateRouter);
 
 // -----------------------------------------------------------------------------
 // LEGACY NOKIA E72 / SYMBIAN S60 ROUTES

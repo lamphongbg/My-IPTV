@@ -27,7 +27,8 @@ import {
   AlertCircle,
   CheckCircle,
   Sliders,
-  X
+  X,
+  Subtitles
 } from 'lucide-react';
 
 const STORAGE_FAVORITES_KEY = 'my_iptv_favorites_v1';
@@ -66,18 +67,22 @@ export default function App() {
   pageSizeRef.current = pageSize;
 
   // Status filter & availability counts
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'offline'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'offline' | 'subtitles'>('all');
   const [onlineCount, setOnlineCount] = useState<number>(0);
   const [offlineCount, setOfflineCount] = useState<number>(0);
+  const [subtitlesCount, setSubtitlesCount] = useState<number>(0);
 
   // List-specific breakdowns & scope counts
   const [groupActiveCounts, setGroupActiveCounts] = useState<Record<string, number>>({});
   const [groupOfflineCounts, setGroupOfflineCounts] = useState<Record<string, number>>({});
-  const [currentScopeCounts, setCurrentScopeCounts] = useState<{ total: number; online: number; offline: number } | null>(null);
+  const [groupSubtitlesCounts, setGroupSubtitlesCounts] = useState<Record<string, number>>({});
+  const [currentScopeCounts, setCurrentScopeCounts] = useState<{ total: number; online: number; offline: number; subtitles?: number } | null>(null);
   const [favoritesActiveCount, setFavoritesActiveCount] = useState<number>(0);
   const [favoritesOfflineCount, setFavoritesOfflineCount] = useState<number>(0);
+  const [favoritesSubtitlesCount, setFavoritesSubtitlesCount] = useState<number>(0);
   const [recentActiveCount, setRecentActiveCount] = useState<number>(0);
   const [recentOfflineCount, setRecentOfflineCount] = useState<number>(0);
+  const [recentSubtitlesCount, setRecentSubtitlesCount] = useState<number>(0);
 
   // Background Batch Channel Scanner state
   const [scanProgress, setScanProgress] = useState<{
@@ -125,6 +130,16 @@ export default function App() {
     if (currentScopeCounts && activeGroup !== 'all') return currentScopeCounts.offline;
     return groupOfflineCounts[activeGroup] ?? 0;
   }, [activeGroup, offlineCount, favoritesOfflineCount, recentOfflineCount, currentScopeCounts, groupOfflineCounts]);
+
+  const displayedListSubtitles = useMemo(() => {
+    if (activeGroup === 'all') return subtitlesCount;
+    if (activeGroup === 'favorites') return favoritesSubtitlesCount;
+    if (activeGroup === 'recent') return recentSubtitlesCount;
+    if (currentScopeCounts && activeGroup !== 'all' && typeof currentScopeCounts.subtitles === 'number') {
+      return currentScopeCounts.subtitles;
+    }
+    return groupSubtitlesCounts[activeGroup] ?? 0;
+  }, [activeGroup, subtitlesCount, favoritesSubtitlesCount, recentSubtitlesCount, currentScopeCounts, groupSubtitlesCounts]);
 
   // Keep stable refs so loadChannels never re-creates or re-fetches when user selects a channel
   const favoritesRef = useRef<string[]>(favorites);
@@ -203,9 +218,11 @@ export default function App() {
           setGroupCounts(cnts);
           setGroupActiveCounts(gData.activeCounts || {});
           setGroupOfflineCounts(gData.offlineCounts || {});
+          setGroupSubtitlesCounts(gData.subtitlesCounts || {});
           setTotalSystemChannels(gData.totalChannels || 0);
           setOnlineCount(gData.onlineChannels ?? 0);
           setOfflineCount(gData.offlineChannels ?? 0);
+          setSubtitlesCount(gData.subtitlesChannels ?? 0);
         }
       }
 
@@ -244,7 +261,7 @@ export default function App() {
       query: string,
       page: number = 1,
       currentLimit: number = pageSizeRef.current,
-      currentStatus: 'all' | 'active' | 'offline' = statusFilter
+      currentStatus: 'all' | 'active' | 'offline' | 'subtitles' = statusFilter
     ) => {
       setLoading(true);
 
@@ -261,21 +278,26 @@ export default function App() {
             const itemTotal = targetItems.length;
             const itemOnline = targetItems.filter((c) => c.status !== 'offline').length;
             const itemOffline = targetItems.filter((c) => c.status === 'offline').length;
+            const itemSubtitles = targetItems.filter((c) => Boolean(c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0))).length;
 
             if (group === 'favorites') {
               setFavoritesActiveCount(itemOnline);
               setFavoritesOfflineCount(itemOffline);
+              setFavoritesSubtitlesCount(itemSubtitles);
             } else {
               setRecentActiveCount(itemOnline);
               setRecentOfflineCount(itemOffline);
+              setRecentSubtitlesCount(itemSubtitles);
             }
-            setCurrentScopeCounts({ total: itemTotal, online: itemOnline, offline: itemOffline });
+            setCurrentScopeCounts({ total: itemTotal, online: itemOnline, offline: itemOffline, subtitles: itemSubtitles });
 
             let filtered = targetItems;
             if (currentStatus === 'active') {
               filtered = filtered.filter((c) => c.status !== 'offline');
             } else if (currentStatus === 'offline') {
               filtered = filtered.filter((c) => c.status === 'offline');
+            } else if (currentStatus === 'subtitles') {
+              filtered = filtered.filter((c) => Boolean(c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0)));
             }
 
             if (query.trim()) {
@@ -302,6 +324,9 @@ export default function App() {
               setOnlineCount(data.globalCounts.online);
               setOfflineCount(data.globalCounts.offline);
               setTotalSystemChannels(data.globalCounts.total);
+              if (typeof data.globalCounts.subtitles === 'number') {
+                setSubtitlesCount(data.globalCounts.subtitles);
+              }
             }
 
             setSelectedChannel((prev) => prev ? prev : (paginated.length > 0 ? paginated[0] : null));
@@ -339,6 +364,9 @@ export default function App() {
             setOnlineCount(data.globalCounts.online);
             setOfflineCount(data.globalCounts.offline);
             setTotalSystemChannels(data.globalCounts.total);
+            if (typeof data.globalCounts.subtitles === 'number') {
+              setSubtitlesCount(data.globalCounts.subtitles);
+            }
           }
 
           setSelectedChannel((prev) => prev ? prev : (newChannels.length > 0 ? newChannels[0] : null));
@@ -768,6 +796,10 @@ export default function App() {
               playTrigger={playTrigger}
               onOpenDetails={(ch) => handleOpenDetails(ch)}
               isNokiaLightweight={isNokiaLightweight}
+              onChannelUpdate={(updatedCh) => {
+                setSelectedChannel((prev) => (prev && prev.id === updatedCh.id ? { ...prev, ...updatedCh } : prev));
+                setChannels((prev) => prev.map((ch) => (ch.id === updatedCh.id ? { ...ch, ...updatedCh } : ch)));
+              }}
             />
 
             {/* Quick Hub: CorePlayer on Nokia E72 Banner */}
@@ -859,9 +891,9 @@ export default function App() {
             {/* Channel Availability & Status Filter Toolbar */}
             <div className="bg-neutral-900/90 border border-neutral-800 rounded-xl p-3 flex flex-col gap-2.5 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                {/* Status Filter Tabs */}
+                {/* Status & Subtitle Filter Tabs */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] text-neutral-400 font-semibold mr-1">Trạng thái:</span>
+                  <span className="text-[11px] text-neutral-400 font-semibold mr-1">Bộ lọc:</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -908,6 +940,22 @@ export default function App() {
                   >
                     <span className="w-2 h-2 rounded-full bg-rose-400" />
                     <span>Không khả dụng ({displayedListOffline.toLocaleString('vi-VN')})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter('subtitles');
+                      loadChannels(activeGroup, debouncedQuery, 1, pageSizeRef.current, 'subtitles');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                      statusFilter === 'subtitles'
+                        ? 'bg-cyan-600 text-white font-bold shadow ring-1 ring-cyan-400'
+                        : 'bg-neutral-950 hover:bg-neutral-800 text-cyan-400 border border-cyan-950'
+                    }`}
+                    title={`${displayedListSubtitles.toLocaleString('vi-VN')} kênh có phụ đề [CC] trong ${activeGroup === 'all' ? 'toàn bộ hệ thống' : `list "${activeGroup}"`}`}
+                  >
+                    <Subtitles className="w-3.5 h-3.5 text-cyan-300" />
+                    <span>Có phụ đề [CC] ({displayedListSubtitles.toLocaleString('vi-VN')})</span>
                   </button>
                 </div>
 
@@ -988,10 +1036,18 @@ export default function App() {
                   )}
                   {statusFilter !== 'all' && (
                     <>
-                      {' '}&bull; Trạng thái:{' '}
-                      <strong className={statusFilter === 'active' ? 'text-emerald-400' : 'text-rose-400'}>
+                      {' '}&bull; Bộ lọc:{' '}
+                      <strong className={
+                        statusFilter === 'active'
+                          ? 'text-emerald-400'
+                          : statusFilter === 'subtitles'
+                          ? 'text-cyan-400'
+                          : 'text-rose-400'
+                      }>
                         {statusFilter === 'active'
                           ? `Khả dụng (${displayedListOnline.toLocaleString('vi-VN')})`
+                          : statusFilter === 'subtitles'
+                          ? `Có phụ đề [CC] (${displayedListSubtitles.toLocaleString('vi-VN')})`
                           : `Không khả dụng (${displayedListOffline.toLocaleString('vi-VN')})`}
                       </strong>
                     </>

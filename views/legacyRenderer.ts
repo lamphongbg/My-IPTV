@@ -460,6 +460,7 @@ export function renderLegacyHome(options: {
           <div class="ch-header">
             <span class="badge-cat">${escapeHtml(ch.group)}</span>
             <span class="badge-live">&#10003; Online</span>
+            ${Boolean(ch.has_subtitles || (ch.subtitle_tracks && ch.subtitle_tracks.length > 0)) ? '<span class="badge-sub" style="background:#083344;color:#67e8f9;border:1px solid #06b6d4;padding:1px 4px;font-size:9px;font-weight:bold;border-radius:3px;">[CC]</span>' : ''}
             <a class="ch-name-link" href="${chDetailUrl}">
               ${indexNum}. ${escapeHtml(ch.name)}
             </a>

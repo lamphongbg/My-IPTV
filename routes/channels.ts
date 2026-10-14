@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { spawn } from 'child_process';
-import type { Channel } from '../src/types/iptv.js';
+import type { Channel, SubtitleTrackInfo } from '../src/types/iptv.js';
 import { parseM3U, generateM3U } from '../utils/m3uParser.js';
 import {
   getAllActiveChannels,
@@ -79,9 +79,11 @@ router.get(['/api/groups', '/api/categories'], async (_req: Request, res: Respon
     const counts: Record<string, number> = {};
     const activeCounts: Record<string, number> = {};
     const offlineCounts: Record<string, number> = {};
+    const subtitlesCounts: Record<string, number> = {};
 
     let totalOnline = 0;
     let totalOffline = 0;
+    let totalSubtitles = 0;
 
     for (const c of allChannels) {
       const g = (c.group && c.group.trim()) || 'Khác';
@@ -93,6 +95,10 @@ router.get(['/api/groups', '/api/categories'], async (_req: Request, res: Respon
       } else {
         activeCounts[g] = (activeCounts[g] || 0) + 1;
         totalOnline++;
+      }
+      if (c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0)) {
+        subtitlesCounts[g] = (subtitlesCounts[g] || 0) + 1;
+        totalSubtitles++;
       }
     }
 
@@ -108,9 +114,11 @@ router.get(['/api/groups', '/api/categories'], async (_req: Request, res: Respon
       counts,
       activeCounts,
       offlineCounts,
+      subtitlesCounts,
       totalChannels: allChannels.length,
       onlineChannels: totalOnline,
       offlineChannels: totalOffline,
+      subtitlesChannels: totalSubtitles,
     });
   } catch (err: any) {
     res.status(500).json({
@@ -119,9 +127,11 @@ router.get(['/api/groups', '/api/categories'], async (_req: Request, res: Respon
       counts: {},
       activeCounts: {},
       offlineCounts: {},
+      subtitlesCounts: {},
       totalChannels: 0,
       onlineChannels: 0,
       offlineChannels: 0,
+      subtitlesChannels: 0,
     });
   }
 });
@@ -129,7 +139,7 @@ router.get(['/api/groups', '/api/categories'], async (_req: Request, res: Respon
 // API: Get channels with server-side search, group filtering, status filtering, and pagination
 router.get('/api/channels', async (req: Request, res: Response) => {
   try {
-    const { q, group, page, limit, status } = req.query;
+    const { q, group, page, limit, status, has_subtitles, subtitles } = req.query;
     const playlists = await getPlaylists();
     const enabledPlaylistIds = new Set(playlists.filter((p) => p.enabled).map((p) => p.id));
     const allChannels = (await getAllChannelsAdmin()).filter(
@@ -139,6 +149,7 @@ router.get('/api/channels', async (req: Request, res: Response) => {
     const totalSystemChannels = allChannels.length;
     const totalSystemOnline = allChannels.filter((c) => c.status !== 'offline').length;
     const totalSystemOffline = allChannels.filter((c) => c.status === 'offline').length;
+    const totalSystemSubtitles = allChannels.filter((c) => Boolean(c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0))).length;
 
     // 1. Group / List Scope
     let scoped = allChannels;
@@ -151,6 +162,7 @@ router.get('/api/channels', async (req: Request, res: Response) => {
     const scopeTotal = scoped.length;
     const scopeOnline = scoped.filter((c) => c.status !== 'offline').length;
     const scopeOffline = scoped.filter((c) => c.status === 'offline').length;
+    const scopeSubtitles = scoped.filter((c) => Boolean(c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0))).length;
 
     // 2. Search query filter
     let filtered = scoped;
@@ -168,6 +180,7 @@ router.get('/api/channels', async (req: Request, res: Response) => {
     const queryTotal = filtered.length;
     const queryOnline = filtered.filter((c) => c.status !== 'offline').length;
     const queryOffline = filtered.filter((c) => c.status === 'offline').length;
+    const querySubtitles = filtered.filter((c) => Boolean(c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0))).length;
 
     // 3. Status filter
     const statusParam = typeof status === 'string' ? status.toLowerCase().trim() : 'all';
@@ -177,6 +190,12 @@ router.get('/api/channels', async (req: Request, res: Response) => {
       filtered = filtered.filter((c) => c.status === 'offline');
     }
 
+    // 4. Subtitles filter
+    const wantSubtitles = has_subtitles === 'true' || subtitles === 'true' || statusParam === 'subtitles';
+    if (wantSubtitles) {
+      filtered = filtered.filter((c) => Boolean(c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0)));
+    }
+
     const total = filtered.length;
 
     const countsPayload = {
@@ -184,16 +203,19 @@ router.get('/api/channels', async (req: Request, res: Response) => {
         total: scopeTotal,
         online: scopeOnline,
         offline: scopeOffline,
+        subtitles: scopeSubtitles,
       },
       queryCounts: {
         total: queryTotal,
         online: queryOnline,
         offline: queryOffline,
+        subtitles: querySubtitles,
       },
       globalCounts: {
         total: totalSystemChannels,
         online: totalSystemOnline,
         offline: totalSystemOffline,
+        subtitles: totalSystemSubtitles,
       },
     };
 
@@ -266,6 +288,82 @@ router.post('/api/channels/:id/scan', async (req: Request, res: Response) => {
     }
     const result = await scanSingleChannel(channel);
     res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Auto-record / update subtitles detected for a channel (e.g. CEA-608 discovered during live playback)
+router.post(['/api/channels/:id/subtitles', '/api/channels/:id/detected-subtitles'], async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { subtitle_tracks, has_subtitles = true } = req.body;
+    const channel = await getChannelFromDb(id);
+    if (!channel) {
+      return res.status(404).json({ error: 'Không tìm thấy kênh.' });
+    }
+
+    const existingTracks: SubtitleTrackInfo[] = Array.isArray(channel.subtitle_tracks) ? channel.subtitle_tracks : [];
+    const incomingTracks: SubtitleTrackInfo[] = Array.isArray(subtitle_tracks) ? subtitle_tracks : [];
+
+    // Merge tracks avoiding duplicates
+    const mergedTracks = [...existingTracks];
+    for (const track of incomingTracks) {
+      const exists = mergedTracks.some(
+        (t) =>
+          (t.name && track.name && t.name.toLowerCase() === track.name.toLowerCase()) ||
+          (t.type === 'cea608' && track.type === 'cea608' && t.lang === track.lang)
+      );
+      if (!exists) {
+        mergedTracks.push(track);
+      }
+    }
+
+    const finalTracks = mergedTracks.length > 0 ? mergedTracks : incomingTracks;
+    const updated = await updateChannel(id, {
+      has_subtitles: Boolean(has_subtitles || finalTracks.length > 0),
+      subtitle_tracks: finalTracks,
+    });
+
+    console.log(`[Channel Subtitles] Auto-saved subtitles for channel "${channel.name}" (${id}):`, finalTracks);
+    res.json({ success: true, channel: updated });
+  } catch (err: any) {
+    console.error('[Channel Subtitles] Error updating channel subtitles:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/api/channels/:id/subtitles', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { subtitle_tracks, has_subtitles = true } = req.body;
+    const channel = await getChannelFromDb(id);
+    if (!channel) {
+      return res.status(404).json({ error: 'Không tìm thấy kênh.' });
+    }
+
+    const existingTracks: SubtitleTrackInfo[] = Array.isArray(channel.subtitle_tracks) ? channel.subtitle_tracks : [];
+    const incomingTracks: SubtitleTrackInfo[] = Array.isArray(subtitle_tracks) ? subtitle_tracks : [];
+
+    const mergedTracks = [...existingTracks];
+    for (const track of incomingTracks) {
+      const exists = mergedTracks.some(
+        (t) =>
+          (t.name && track.name && t.name.toLowerCase() === track.name.toLowerCase()) ||
+          (t.type === 'cea608' && track.type === 'cea608' && t.lang === track.lang)
+      );
+      if (!exists) {
+        mergedTracks.push(track);
+      }
+    }
+
+    const finalTracks = mergedTracks.length > 0 ? mergedTracks : incomingTracks;
+    const updated = await updateChannel(id, {
+      has_subtitles: Boolean(has_subtitles || finalTracks.length > 0),
+      subtitle_tracks: finalTracks,
+    });
+
+    res.json({ success: true, channel: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

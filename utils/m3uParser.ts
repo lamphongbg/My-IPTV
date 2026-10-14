@@ -74,6 +74,8 @@ export function parseM3U(m3uContent: string, playlistId?: string): Channel[] {
         currentInfo.audio_codec = 'aac';
         currentInfo.resolution = 'HD';
         currentInfo.status = 'active';
+        currentInfo.has_subtitles = false;
+        currentInfo.subtitle_tracks = [];
         currentInfo.updated_at = new Date().toISOString();
 
         channels.push(currentInfo as Channel);

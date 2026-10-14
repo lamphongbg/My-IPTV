@@ -1,3 +1,15 @@
+export interface SubtitleTrackInfo {
+  id?: string | number;
+  name?: string;
+  lang?: string;
+  isDefault?: boolean;
+  default?: boolean;
+  autoSelect?: boolean;
+  forced?: boolean;
+  type?: 'vtt' | 'ass' | 'embedded' | 'cea608' | 'unknown' | string;
+  uri?: string;
+}
+
 export interface Channel {
   id: string;
   playlist_id?: string;
@@ -13,6 +25,8 @@ export interface Channel {
   resolution?: string;
   status?: 'active' | 'check' | 'offline';
   description?: string;
+  has_subtitles?: boolean;
+  subtitle_tracks?: SubtitleTrackInfo[];
   updated_at?: string;
 }
 
@@ -57,5 +71,13 @@ export interface AdminStats {
   totalChannels: number;
   activeChannels: number;
   offlineChannels?: number;
+  subtitlesChannels?: number;
   groups: string[];
+}
+
+export interface ChannelFilterOptions {
+  group?: string;
+  search?: string;
+  status?: 'all' | 'active' | 'offline';
+  hasSubtitles?: boolean;
 }

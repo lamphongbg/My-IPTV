@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import {
   getAdminCredentials,
@@ -355,6 +355,7 @@ router.get('/api/admin/stats', async (_req: Request, res: Response) => {
     const groupCounts: Record<string, number> = {};
     let activeChannels = 0;
     let offlineChannels = 0;
+    let subtitlesChannels = 0;
     for (const c of channels) {
       if (c.group && c.group.trim()) {
         const g = c.group.trim();
@@ -365,6 +366,9 @@ router.get('/api/admin/stats', async (_req: Request, res: Response) => {
         offlineChannels++;
       } else {
         activeChannels++;
+      }
+      if (c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0)) {
+        subtitlesChannels++;
       }
     }
 
@@ -380,6 +384,7 @@ router.get('/api/admin/stats', async (_req: Request, res: Response) => {
       totalChannels: channels.length,
       activeChannels,
       offlineChannels,
+      subtitlesChannels,
       groups: sortedGroups,
     });
   } catch (err: any) {

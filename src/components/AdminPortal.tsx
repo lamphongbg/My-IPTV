@@ -34,6 +34,7 @@ import {
   Server,
   Cloud,
   Download,
+  Subtitles,
 } from 'lucide-react';
 
 const ADMIN_TOKEN_KEY = 'my_iptv_admin_token';
@@ -115,6 +116,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     scanned: number;
     onlineCount: number;
     offlineCount: number;
+    subtitlesCount?: number;
     currentChannelName?: string;
     scopeDescription?: string;
   } | null>(null);
@@ -619,6 +621,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
     if (filterGroup !== 'all' && c.group.toLowerCase() !== filterGroup.toLowerCase()) return false;
     if (filterStatus === 'active' && c.status !== 'active') return false;
     if (filterStatus === 'offline' && c.status === 'active') return false;
+    if (filterStatus === 'subtitles' && !Boolean(c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0))) return false;
     if (channelSearch.trim()) {
       const q = channelSearch.toLowerCase().trim();
       return (
@@ -632,25 +635,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
   });
 
   // Channel count statistics
-  // Luôn đồng bộ chuẩn xác với kết quả rà soát vừa hoàn thành hoặc thống kê thời gian thực từ server
-  const hasValidScanStats = Boolean(
+  // Đồng bộ chuẩn xác 100% giữa thống kê tổng quan bên trên và tiến trình rà soát bên dưới
+  const hasScanStats = Boolean(
     scanProgress &&
-    scanProgress.scanned > 0 &&
-    scanProgress.scanned === scanProgress.total &&
-    (scanProgress.onlineCount + scanProgress.offlineCount === scanProgress.total)
+    (scanProgress.scanned > 0 || scanProgress.offlineCount > 0 || scanProgress.onlineCount > 0)
   );
 
-  const totalChannelsCount = hasValidScanStats
-    ? scanProgress!.total
+  const totalChannelsCount = hasScanStats && scanProgress?.total
+    ? scanProgress.total
     : (stats?.totalChannels ?? channels.length);
 
-  const activeChannelsCount = hasValidScanStats
-    ? scanProgress!.onlineCount
+  const activeChannelsCount = hasScanStats && scanProgress
+    ? scanProgress.onlineCount
     : (stats?.activeChannels ?? channels.filter((c) => c.status !== 'offline').length);
 
-  const offlineChannelsCount = hasValidScanStats
-    ? scanProgress!.offlineCount
+  const offlineChannelsCount = hasScanStats && scanProgress
+    ? scanProgress.offlineCount
     : (stats?.offlineChannels ?? channels.filter((c) => c.status === 'offline').length);
+
+  const subtitlesChannelsCount = channels.filter((c) =>
+    Boolean(c.has_subtitles || (c.subtitle_tracks && c.subtitle_tracks.length > 0))
+  ).length;
 
   // Channel Pagination State
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -1240,6 +1245,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   <div className="flex items-center gap-3">
                     <span className="text-emerald-400 font-medium">Online: {scanProgress.onlineCount}</span>
                     <span className="text-rose-400 font-medium">Offline: {scanProgress.offlineCount}</span>
+                    <span className="text-cyan-400 font-medium">Có phụ đề [CC]: {scanProgress.subtitlesCount || 0}</span>
                     {scanProgress.isRunning && (
                       <button
                         onClick={handleStopBatchScan}
@@ -1288,6 +1294,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                 <option value="all">Tất cả ({totalChannelsCount.toLocaleString('vi-VN')})</option>
                 <option value="active">Đang hoạt động ({activeChannelsCount.toLocaleString('vi-VN')})</option>
                 <option value="offline">Không hoạt động ({offlineChannelsCount.toLocaleString('vi-VN')})</option>
+                <option value="subtitles">Có phụ đề [CC] ({subtitlesChannelsCount.toLocaleString('vi-VN')})</option>
               </select>
 
               <select
@@ -1365,7 +1372,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                                 </div>
                               )}
                               <div className="truncate max-w-xs">
-                                <div>{ch.name}</div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span>{ch.name}</span>
+                                  {Boolean(ch.has_subtitles || (ch.subtitle_tracks && ch.subtitle_tracks.length > 0)) && (
+                                    <span
+                                      className="text-[9px] font-bold text-cyan-400 bg-cyan-950/80 border border-cyan-500/40 px-1 py-0.2 rounded inline-flex items-center gap-0.5"
+                                      title={
+                                        ch.subtitle_tracks && ch.subtitle_tracks.length > 0
+                                          ? `Có phụ đề [CC]: ${ch.subtitle_tracks.map((t) => t.name || t.lang || t.type).join(', ')}`
+                                          : 'Kênh có phụ đề [CC]'
+                                      }
+                                    >
+                                      <Subtitles className="w-2.5 h-2.5 text-cyan-400" />
+                                      <span>CC</span>
+                                    </span>
+                                  )}
+                                </div>
                                 {ch.tvg_id && (
                                   <span className="text-[10px] text-neutral-500 font-mono">id: {ch.tvg_id}</span>
                                 )}
@@ -2460,7 +2482,13 @@ CREATE INDEX IF NOT EXISTS idx_channels_playlist ON public.channels(playlist_id)
               </button>
             </div>
             <div className="p-4">
-              <VideoPlayer channel={previewChannel} />
+              <VideoPlayer
+                channel={previewChannel}
+                onChannelUpdate={(updatedCh) => {
+                  setPreviewChannel(updatedCh);
+                  setChannels((prev) => prev.map((c) => (c.id === updatedCh.id ? { ...c, ...updatedCh } : c)));
+                }}
+              />
             </div>
           </div>
         </div>

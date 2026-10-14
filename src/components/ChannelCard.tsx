@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Channel } from '../types/iptv';
 import { isNokiaLightweightBrowser, getVlcLaunchUrl, launchVlcPlayer } from '../utils/deviceHelper';
-import { Play, Star, Info, Smartphone, Activity, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Play, Star, Info, Smartphone, Activity, AlertCircle, CheckCircle2, Subtitles } from 'lucide-react';
 
 interface ChannelCardProps {
   channel: Channel;
@@ -30,6 +30,32 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
 }) => {
   const isNokia = isNokiaLightweight ?? isNokiaLightweightBrowser();
   const isOffline = channel.status === 'offline';
+
+  const hasSubtitles = Boolean(
+    channel.has_subtitles || (channel.subtitle_tracks && channel.subtitle_tracks.length > 0)
+  );
+
+  const subtitleTrackSummary = useMemo(() => {
+    if (!channel.subtitle_tracks || channel.subtitle_tracks.length === 0) return null;
+    const valid = channel.subtitle_tracks.filter((t) => t.name || t.lang || t.type);
+    if (valid.length === 0) return null;
+    if (valid.length === 1) {
+      const code = valid[0].lang || valid[0].name || '';
+      return code.length <= 4 ? code.toUpperCase() : code.substring(0, 3).toUpperCase();
+    }
+    return `${valid.length}`;
+  }, [channel.subtitle_tracks]);
+
+  const subtitleTooltip = useMemo(() => {
+    if (!hasSubtitles) return '';
+    if (channel.subtitle_tracks && channel.subtitle_tracks.length > 0) {
+      const trackList = channel.subtitle_tracks
+        .map((t) => `${t.name || t.lang || 'Track'}${t.type ? ` [${t.type}]` : ''}`)
+        .join(', ');
+      return `Kênh có phụ đề: ${trackList}`;
+    }
+    return 'Kênh có phụ đề [CC]';
+  }, [hasSubtitles, channel.subtitle_tracks]);
 
   return (
     <div
@@ -91,6 +117,22 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
             <span className="text-[10px] text-neutral-400">
               {channel.resolution || 'HD'}
             </span>
+
+            {/* Subtitle CC Badge */}
+            {hasSubtitles && (
+              <span
+                className="text-[10px] font-bold text-cyan-300 bg-cyan-950/80 border border-cyan-500/40 px-1.5 py-0.5 rounded flex items-center gap-1 shadow-sm transition hover:bg-cyan-900/60"
+                title={subtitleTooltip}
+              >
+                <Subtitles className="w-3 h-3 text-cyan-400 flex-shrink-0" />
+                <span>CC</span>
+                {subtitleTrackSummary && (
+                  <span className="text-[9px] text-cyan-200/90 font-medium">
+                    {subtitleTrackSummary}
+                  </span>
+                )}
+              </span>
+            )}
 
             {/* Availability Badge */}
             {isOffline ? (
