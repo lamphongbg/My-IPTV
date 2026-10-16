@@ -19,6 +19,18 @@ function addToCache(key: string, translatedText: string, detectedLang?: string) 
   translationCache.set(key, { translatedText, detectedLang, timestamp: Date.now() });
 }
 
+function decodeHtmlEntities(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
+}
+
 // Fast public translation service (MyMemory)
 async function translateWithFastAPI(text: string, targetLang: string, sourceLang = 'autodetect'): Promise<{ translatedText: string; detectedLang?: string }> {
   const pair = `${sourceLang === 'auto' ? 'autodetect' : sourceLang}|${targetLang}`;
@@ -43,7 +55,7 @@ async function translateWithFastAPI(text: string, targetLang: string, sourceLang
       throw new Error(translated);
     }
     return {
-      translatedText: translated.trim(),
+      translatedText: decodeHtmlEntities(translated.trim()),
       detectedLang: json?.matches?.[0]?.['source-language'] || sourceLang,
     };
   }

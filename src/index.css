@@ -29,3 +29,12 @@
   touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
+
+/* Suppress default browser native caption boxes so only our custom AI Subtitle Overlay renders */
+video::cue {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  background: transparent !important;
+  color: transparent !important;
+}

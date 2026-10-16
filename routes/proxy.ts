@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import http from 'http';
 import https from 'https';
 import { URL } from 'url';
+import zlib from 'zlib';
 
 const router = Router();
 
@@ -26,6 +27,7 @@ router.options('/api/proxy/stream', (_req: Request, res: Response) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.header('Access-Control-Allow-Headers', '*');
+  res.header('Access-Control-Max-Age', '86400');
   res.sendStatus(204);
 });
 
@@ -33,8 +35,9 @@ router.options('/api/proxy/stream', (_req: Request, res: Response) => {
  * Universal IPTV Stream Proxy
  * - Resolves CORS issues for modern browsers
  * - Bridges mixed-content (HTTP streams loaded on HTTPS pages)
- * - Automatically rewrites .m3u8 manifests so that chunklists and .ts segments route through this proxy
+ * - Automatically rewrites .m3u8 manifests so that chunklists, sub-playlists, and .ts segments route through this proxy
  * - Gracefully handles dead, hanging, or slow upstream IPTV streams without crashing or throwing
+ * - Automatically decompresses GZIP/Brotli/Deflate manifests from upstream CDNs
  */
 router.get('/api/proxy/stream', async (req: Request, res: Response) => {
   const targetUrl = req.query.url as string;
@@ -57,6 +60,7 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.header('Access-Control-Allow-Headers', '*');
+  res.header('Access-Control-Expose-Headers', '*');
 
   let isAborted = false;
   let isTimedOut = false;
@@ -70,11 +74,14 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
     const isHttps = parsedUrl.protocol === 'https:';
     const client = isHttps ? https : http;
 
+    const originHeader = `${parsedUrl.protocol}//${parsedUrl.host}`;
     const requestHeaders: Record<string, string> = {
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': '*/*',
-      'Accept-Encoding': 'identity', // Do not gzip manifests so we can rewrite text
+      'Accept-Encoding': 'gzip, deflate, identity',
+      'Origin': originHeader,
+      'Referer': `${originHeader}/`,
     };
 
     if (req.headers.range) {
@@ -113,12 +120,13 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
         }
       }
 
-      const contentType = remoteRes.headers['content-type'] || '';
+      const contentType = (remoteRes.headers['content-type'] || '').toLowerCase();
       const isM3u8 =
         contentType.includes('mpegurl') ||
         contentType.includes('m3u8') ||
         parsedUrl.pathname.endsWith('.m3u8') ||
-        parsedUrl.search.includes('.m3u8');
+        parsedUrl.search.includes('.m3u8') ||
+        targetUrl.includes('.m3u8');
 
       // If remote returned an error status (4xx/5xx), pass through directly
       if (remoteRes.statusCode && remoteRes.statusCode >= 400) {
@@ -129,7 +137,7 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
       }
 
       if (isM3u8 && req.method !== 'HEAD') {
-        // Read manifest into buffer and rewrite segment links
+        // Read manifest into buffer, decompress if needed, and rewrite segment links
         const chunks: Buffer[] = [];
         remoteRes.on('data', (chunk) => {
           if (!isAborted) chunks.push(chunk);
@@ -137,12 +145,26 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
         remoteRes.on('end', () => {
           if (isAborted || res.headersSent || res.writableEnded) return;
 
-          const manifestText = Buffer.concat(chunks).toString('utf-8');
+          let buffer = Buffer.concat(chunks);
+          const encoding = (remoteRes.headers['content-encoding'] || '').toLowerCase();
+          try {
+            if (encoding === 'gzip' || encoding === 'x-gzip') {
+              buffer = zlib.gunzipSync(buffer);
+            } else if (encoding === 'br') {
+              buffer = zlib.brotliDecompressSync(buffer);
+            } else if (encoding === 'deflate') {
+              buffer = zlib.inflateSync(buffer);
+            }
+          } catch {
+            // Keep buffer as-is if decompression fails
+          }
+
+          const manifestText = buffer.toString('utf-8');
 
           if (!manifestText.includes('#EXTM3U')) {
-            // Not a real manifest, send as-is
+            // Not an HLS manifest, send raw buffer as-is
             res.setHeader('Content-Type', contentType || 'application/vnd.apple.mpegurl');
-            return res.status(remoteRes.statusCode || 200).send(manifestText);
+            return res.status(remoteRes.statusCode || 200).send(buffer);
           }
 
           // Rewrite lines: any URI should go through /api/proxy/stream
@@ -151,9 +173,9 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
             const trimmed = line.trim();
             if (!trimmed) return line;
 
-            // Handle any tag containing URI="..." (e.g. #EXT-X-KEY, #EXT-X-MAP, #EXT-X-MEDIA, #EXT-X-I-FRAME-STREAM-INF)
+            // Handle any tag containing URI="..." or URI=... (e.g. #EXT-X-KEY, #EXT-X-MAP, #EXT-X-MEDIA, #EXT-X-I-FRAME-STREAM-INF)
             if (trimmed.startsWith('#') && trimmed.includes('URI=')) {
-              return trimmed.replace(/URI="([^"]+)"/g, (_match, uriVal) => {
+              return trimmed.replace(/URI=["']?([^"',\s>]+)["']?/gi, (_match, uriVal) => {
                 try {
                   const resolvedUri = new URL(uriVal, targetUrl).href;
                   return `URI="/api/proxy/stream?url=${encodeURIComponent(resolvedUri)}"`;
@@ -178,8 +200,10 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
           });
 
           const rewrittenManifest = rewrittenLines.join('\n');
-          res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+          res.setHeader('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8');
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
           return res.status(200).send(rewrittenManifest);
         });
 

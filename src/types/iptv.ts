@@ -17,7 +17,7 @@ export interface Channel {
   group: string;
   logo: string;
   stream_url: string;
-  format: 'hls' | 'mp4' | 'http' | 'unknown';
+  format: 'hls' | 'mp4' | 'http' | 'dash' | 'ts' | 'unknown';
   tvg_id?: string;
   tvg_name?: string;
   video_codec?: string;
@@ -27,6 +27,8 @@ export interface Channel {
   description?: string;
   has_subtitles?: boolean;
   subtitle_tracks?: SubtitleTrackInfo[];
+  requires_vlc?: boolean;
+  web_playable?: boolean;
   updated_at?: string;
 }
 

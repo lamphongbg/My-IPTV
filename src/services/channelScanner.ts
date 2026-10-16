@@ -223,21 +223,28 @@ export function parseHlsSubtitles(manifestContent: string, baseUrl?: string): Su
   return deduplicated;
 }
 
-/**
- * Thăm dò chuyên sâu tính khả dụng và phụ đề của một luồng stream IPTV (HLS / MPEG-TS / HTTP)
- * Kiểm tra 3 giai đoạn:
- * 1. HTTP Status & Network Latency (GET với Range 32KB và timeout 2.8s)
- * 2. Phân tích nội dung Master Manifest HLS: Tìm kiếm các track phụ đề SUBTITLES và CLOSED-CAPTIONS
- * 3. HLS Playlist Validation (Phát hiện trang lỗi 404/Cloudflare giả dạng HTTP 200)
- */
-export async function probeChannelStream(streamUrl: string): Promise<{
+export interface ProbeStreamResult {
   status: 'online' | 'offline';
   responseTimeMs: number;
   httpStatus?: number;
   hasSubtitles?: boolean;
   subtitleTracks?: SubtitleTrackInfo[];
+  codecNote?: string;
+  format?: 'hls' | 'dash' | 'ts' | 'mp4' | 'http';
+  requiresVlc?: boolean;
+  webPlayable?: boolean;
   error?: string;
-}> {
+}
+
+/**
+ * Thăm dò chuyên sâu tính khả dụng, định dạng phát và phụ đề của một luồng stream IPTV
+ * Kiểm tra 4 giai đoạn chuẩn chuyên gia streaming:
+ * 1. HTTP Status & Network Latency (GET với Range 32KB và timeout 2.8s)
+ * 2. Phân tích nội dung Master Manifest HLS: Tìm kiếm các track phụ đề SUBTITLES và CLOSED-CAPTIONS (CEA-608)
+ * 3. HLS Playlist Validation (Phát hiện trang lỗi 404/Cloudflare giả dạng HTTP 200, phát hiện HTTP 204 No Content hoặc 0 byte)
+ * 4. Phát hiện định dạng luồng & khả năng phát trên trình duyệt Web (Web HLS vs Raw MPEG-TS / DASH / AC-3 cần VLC)
+ */
+export async function probeChannelStream(streamUrl: string): Promise<ProbeStreamResult> {
   const startTime = Date.now();
 
   try {
@@ -248,6 +255,9 @@ export async function probeChannelStream(streamUrl: string): Promise<{
         responseTimeMs: 0,
         hasSubtitles: false,
         subtitleTracks: [],
+        format: 'http',
+        requiresVlc: false,
+        webPlayable: false,
         error: 'Giao thức URL không hợp lệ (cần http hoặc https)',
       };
     }
@@ -257,11 +267,12 @@ export async function probeChannelStream(streamUrl: string): Promise<{
 
     let res: Response;
     let bodyText = '';
+    let isRawTsBinary = false;
 
     const headers = {
       'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      Accept: 'application/x-mpegURL, application/vnd.apple.mpegurl, text/plain, */*',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      Accept: 'application/x-mpegURL, application/vnd.apple.mpegurl, text/plain, video/mp2t, */*',
       Range: 'bytes=0-32768',
     };
 
@@ -285,8 +296,9 @@ export async function probeChannelStream(streamUrl: string): Promise<{
           chunks.push(value);
           totalRead += value.length;
 
-          // Nếu là luồng MPEG-TS nhị phân (sync byte 0x47), 1KB đã đủ chứng minh luồng sống
+          // Nếu là luồng MPEG-TS nhị phân (sync byte 0x47)
           if (value[0] === 0x47 && totalRead >= 188 * 4) {
+            isRawTsBinary = true;
             break;
           }
         }
@@ -301,7 +313,7 @@ export async function probeChannelStream(streamUrl: string): Promise<{
         bodyText = new TextDecoder('utf-8', { fatal: false }).decode(total);
       }
     } catch (err: any) {
-      if (err.name === 'AbortError' && bodyText) {
+      if (err.name === 'AbortError' && (bodyText || isRawTsBinary)) {
         // Đã nhận được dữ liệu và chủ động ngắt
       } else {
         // Thử lại với HEAD nếu GET bị lỗi
@@ -362,10 +374,29 @@ export async function probeChannelStream(streamUrl: string): Promise<{
       };
     }
 
-    // Nếu là HLS .m3u8, kiểm tra xem nội dung có phải là HTML giả dạng 200 không
+    // Kiểm tra phản hồi rỗng: HTTP 204 No Content hoặc phản hồi không có byte nào
+    const isTsUrl = streamUrl.endsWith('.ts') || streamUrl.includes('/udp/') || streamUrl.includes(':4022/');
+    if (res.status === 204 || (!bodyText && !isRawTsBinary && !isTsUrl)) {
+      return {
+        status: 'offline',
+        responseTimeMs: responseTime,
+        httpStatus: res.status,
+        hasSubtitles: false,
+        subtitleTracks: [],
+        error: 'Luồng phát không trả về dữ liệu (HTTP 204 hoặc 0 byte)',
+      };
+    }
+
+    // Nếu trả về HTML giả dạng 200 (Cloudflare, captcha hoặc trang thông báo lỗi)
     if (bodyText) {
       const lower = bodyText.toLowerCase();
-      if (lower.includes('<html') || lower.includes('<!doctype') || lower.includes('cloudflare')) {
+      if (
+        lower.includes('<html') ||
+        lower.includes('<!doctype') ||
+        lower.includes('cloudflare') ||
+        lower.includes('access denied') ||
+        lower.includes('attention required')
+      ) {
         return {
           status: 'offline',
           responseTimeMs: responseTime,
@@ -377,17 +408,139 @@ export async function probeChannelStream(streamUrl: string): Promise<{
       }
     }
 
-    // Phân tích phụ đề từ HLS manifest
+    // Nhận diện định dạng luồng
+    const isDash = streamUrl.includes('.mpd') || (bodyText && bodyText.includes('<MPD'));
+    const isMpegTs = isRawTsBinary || isTsUrl || (bodyText && bodyText.charCodeAt(0) === 0x47);
+    const isHls = !isDash && !isMpegTs && (bodyText.includes('#EXTM3U') || streamUrl.includes('.m3u8') || streamUrl.includes('chunklist'));
+    const format: 'hls' | 'dash' | 'ts' | 'mp4' | 'http' = isDash
+      ? 'dash'
+      : isMpegTs
+      ? 'ts'
+      : isHls
+      ? 'hls'
+      : streamUrl.includes('.mp4')
+      ? 'mp4'
+      : 'http';
+
+    // Phân tích phụ đề và định dạng từ HLS manifest
     let hasSubtitles = false;
     let subtitleTracks: SubtitleTrackInfo[] = [];
+    let codecNote: string | undefined = undefined;
 
-    if (bodyText && (bodyText.includes('#EXTM3U') || streamUrl.includes('.m3u8'))) {
+    if (bodyText && isHls) {
       const finalUrl = res.url || streamUrl;
       subtitleTracks = parseHlsSubtitles(bodyText, finalUrl);
       if (subtitleTracks.length > 0) {
         hasSubtitles = true;
       }
+
+      // Thăm dò sâu (Deep Probe) vào luồng media con nếu là Master Playlist (#EXT-X-STREAM-INF)
+      // Loại bỏ hoàn toàn lỗi báo ảo: Master 200 OK nhưng sub-playlist hoặc chunk video thực tế bị chết 404/403
+      if (bodyText.includes('#EXT-X-STREAM-INF:')) {
+        const lines = bodyText.split(/\r?\n/);
+        let variantUri: string | null = null;
+        let codecsAttr = '';
+
+        for (let i = 0; i < lines.length; i++) {
+          const l = lines[i].trim();
+          if (l.startsWith('#EXT-X-STREAM-INF:')) {
+            const attrs = parseHlsAttributes(l.substring('#EXT-X-STREAM-INF:'.length));
+            if (attrs['CODECS']) codecsAttr = attrs['CODECS'];
+
+            for (let j = i + 1; j < lines.length; j++) {
+              const nextLine = lines[j].trim();
+              if (nextLine && !nextLine.startsWith('#')) {
+                variantUri = nextLine;
+                break;
+              }
+            }
+            if (variantUri) break;
+          }
+        }
+
+        // Nhận diện codec đặc biệt (AC-3 / EAC-3 / MPEG-2)
+        if (codecsAttr) {
+          const lowerCodecs = codecsAttr.toLowerCase();
+          if (lowerCodecs.includes('ac-3') || lowerCodecs.includes('ec-3') || lowerCodecs.includes('mp4a.40.33')) {
+            codecNote = 'Audio AC-3';
+          } else if (lowerCodecs.includes('mp2v') || lowerCodecs.includes('mpeg2')) {
+            codecNote = 'Video MPEG-2';
+          }
+        }
+
+        if (variantUri) {
+          try {
+            const resolvedVariant = new URL(variantUri, finalUrl).href;
+            const subController = new AbortController();
+            const subTimeout = setTimeout(() => subController.abort(), 2400);
+
+            const subRes = await fetch(resolvedVariant, {
+              method: 'GET',
+              headers: {
+                'User-Agent': headers['User-Agent'],
+                Accept: headers['Accept'],
+                Range: 'bytes=0-16384',
+              },
+              signal: subController.signal,
+            });
+            clearTimeout(subTimeout);
+
+            if (!subRes.ok && subRes.status >= 400) {
+              return {
+                status: 'offline',
+                responseTimeMs: Date.now() - startTime,
+                httpStatus: subRes.status,
+                hasSubtitles: false,
+                subtitleTracks: [],
+                format,
+                error: `Sub-playlist luồng video bị lỗi: HTTP ${subRes.status} (Link con chết/hết hạn)`,
+              };
+            }
+
+            const subText = await subRes.text();
+            if (subText && (subText.toLowerCase().includes('<html') || subText.toLowerCase().includes('cloudflare'))) {
+              return {
+                status: 'offline',
+                responseTimeMs: Date.now() - startTime,
+                httpStatus: subRes.status,
+                hasSubtitles: false,
+                subtitleTracks: [],
+                format,
+                error: 'Sub-playlist trả về trang web HTML lỗi',
+              };
+            }
+
+            // Nếu sub-playlist không chứa phân đoạn hoặc tag HLS hợp lệ
+            if (subText && !subText.includes('#EXTINF') && !subText.includes('#EXT-X-TARGETDURATION') && !subText.includes('#EXTM3U')) {
+              return {
+                status: 'offline',
+                responseTimeMs: Date.now() - startTime,
+                httpStatus: subRes.status,
+                hasSubtitles: false,
+                subtitleTracks: [],
+                format,
+                error: 'Sub-playlist không chứa phân đoạn video hợp lệ (.ts/.m4s)',
+              };
+            }
+          } catch (subErr: any) {
+            return {
+              status: 'offline',
+              responseTimeMs: Date.now() - startTime,
+              hasSubtitles: false,
+              subtitleTracks: [],
+              format,
+              error: `Lỗi kết nối sub-playlist: ${subErr.name === 'AbortError' ? 'Hết thời gian tải (>2.4s)' : subErr.message || 'Lỗi mạng'}`,
+            };
+          }
+        }
+      }
     }
+
+    // Đánh giá tính tương thích của trình duyệt (Web Playable vs Cần VLC)
+    const isAc3 = Boolean(codecNote && codecNote.includes('AC-3'));
+    const isMpeg2 = Boolean(codecNote && codecNote.includes('MPEG-2'));
+    const requiresVlc = Boolean(isDash || isMpegTs || isAc3 || isMpeg2);
+    const webPlayable = !requiresVlc && isHls;
 
     return {
       status: 'online',
@@ -395,6 +548,10 @@ export async function probeChannelStream(streamUrl: string): Promise<{
       httpStatus: res.status,
       hasSubtitles,
       subtitleTracks,
+      codecNote,
+      format,
+      requiresVlc,
+      webPlayable,
     };
   } catch (err: any) {
     return {
@@ -420,7 +577,7 @@ export async function scanSingleChannel(channel: Channel): Promise<ScanItemResul
     ? probe.subtitleTracks
     : (channel.subtitle_tracks || []);
 
-  // Xây dựng mô tả trạng thái kèm ghi chú phụ đề
+  // Xây dựng mô tả trạng thái kèm ghi chú phụ đề, codec và tính tương thích Web/VLC
   let desc = '';
   if (probe.status === 'online') {
     let subTag = '';
@@ -432,7 +589,16 @@ export async function scanSingleChannel(channel: Channel): Promise<ScanItemResul
       ).slice(0, 3).join(', ');
       subTag = ` [CC: ${trackLangs}]`;
     }
-    desc = `Khả dụng (Ping ${probe.responseTimeMs}ms${subTag}, ${new Date().toLocaleDateString('vi-VN')})`;
+
+    let playerNote = ' • Web HLS';
+    if (probe.requiresVlc) {
+      if (probe.format === 'dash') playerNote = ' • Cần VLC (MPEG-DASH)';
+      else if (probe.format === 'ts') playerNote = ' • Cần VLC (MPEG-TS)';
+      else if (probe.codecNote) playerNote = ` • Cần VLC (${probe.codecNote})`;
+      else playerNote = ' • Cần VLC Player';
+    }
+
+    desc = `Khả dụng (Ping ${probe.responseTimeMs}ms${playerNote}${subTag}, ${new Date().toLocaleDateString('vi-VN')})`;
   } else {
     desc = `Không khả dụng: ${probe.error || 'Lỗi kết nối'} (${new Date().toLocaleDateString('vi-VN')})`;
   }
@@ -442,6 +608,11 @@ export async function scanSingleChannel(channel: Channel): Promise<ScanItemResul
     description: desc,
     has_subtitles: hasSubtitles,
     subtitle_tracks: subtitleTracks,
+    format: probe.format || channel.format,
+    requires_vlc: probe.requiresVlc ?? false,
+    web_playable: probe.webPlayable ?? true,
+    video_codec: probe.codecNote?.includes('Video') ? probe.codecNote : channel.video_codec,
+    audio_codec: probe.codecNote?.includes('Audio') ? probe.codecNote : channel.audio_codec,
     updated_at: new Date().toISOString(),
   };
 

@@ -32,6 +32,7 @@ const clientCache = new Map<string, string>();
 export function cleanCueText(rawText: string): string {
   if (!rawText) return '';
   return rawText
+    .replace(/^>+\s*/g, '') // strip CEA-608 roll-up speaker change markers (>>, >>>)
     .replace(/<v[^>]*>/gi, '') // <v Voice>
     .replace(/<\/v>/gi, '')
     .replace(/<c[^>]*>/gi, '') // <c.color>
@@ -45,6 +46,7 @@ export function cleanCueText(rawText: string): string {
     .replace(/<[^>]+>/g, '') // any remaining HTML tags
     .replace(/\{[^}]+\}/g, '') // {position/align tags}
     .replace(/-->/g, '') // cue timeline artifacts
+    .replace(/\[(?:music|applause|cheering|laughter|laughter and applause|singing|instrumental)\]/gi, '') // sound effect tags
     .replace(/\r?\n/g, ' ') // join multiline cues with spaces
     .replace(/\s+/g, ' ') // collapse multiple spaces
     .trim();
@@ -82,7 +84,8 @@ export async function translateSubtitleText(
         targetLang
       )}&dt=t&q=${encodeURIComponent(cleaned)}`;
       const gRes = await fetch(gUrl, { signal: AbortSignal.timeout(1800) });
-      if (gRes.ok) {
+      const contentType = (gRes.headers.get('content-type') || '').toLowerCase();
+      if (gRes.ok && contentType.includes('json')) {
         const data = await gRes.json();
         if (Array.isArray(data) && Array.isArray(data[0])) {
           const translated = data[0].map((item: any) => item[0]).join('').trim();

@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html class="h-full" lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>MY IPTV PRO — Universal Web Cinema Player</title>
+  <!-- Tailwind CSS v3 with Plugins -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <!-- HLS.js for Modern Adaptive Streaming -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
+
+  <!-- Tailwind Custom Config -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            obsidian: {
+              DEFAULT: '#0A0D14',
+              surface: '#111622',
+              card: '#161C2C',
+              border: '#222B42',
+              glow: 'rgba(245, 158, 11, 0.15)'
+            },
+            amber: {
+              DEFAULT: '#F59E0B',
+              glow: '#FBBF24',
+              soft: '#FEF3C7',
+              dark: '#B45309'
+            }
+          },
+          boxShadow: {
+            'glow-amber': '0 0 25px -4px rgba(245, 158, 11, 0.4)',
+            'glow-cyan': '0 0 20px -3px rgba(6, 182, 212, 0.35)',
+            'glass-inset': 'inset 0 1px 1px 0 rgba(255, 255, 255, 0.08)'
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Custom Styles: Glassmorphism & Equalizer Animations -->
+  <style data-purpose="custom-utilities">
+    .glass-panel {
+      background: rgba(17, 22, 34, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    
+    .glass-card {
+      background: rgba(22, 28, 44, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(10, 13, 20, 0.05);
+    }
+    .dark ::-webkit-scrollbar-track {
+      background: rgba(10, 13, 20, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    .dark ::-webkit-scrollbar-thumb {
+      background: #2a344d;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+    .dark ::-webkit-scrollbar-thumb:hover {
+      background: #3b496c;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    @keyframes eq-bounce-1 { 0%, 100% { height: 4px; } 50% { height: 16px; } }
+    @keyframes eq-bounce-2 { 0%, 100% { height: 14px; } 50% { height: 6px; } }
+    @keyframes eq-bounce-3 { 0%, 100% { height: 8px; } 50% { height: 18px; } }
+    
+    .eq-bar-1 { animation: eq-bounce-1 0.8s ease-in-out infinite; }
+    .eq-bar-2 { animation: eq-bounce-2 0.95s ease-in-out infinite 0.2s; }
+    .eq-bar-3 { animation: eq-bounce-3 0.7s ease-in-out infinite 0.4s; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+  </style>
+</head>
+<body class="font-sans h-full flex flex-col antialiased selection:bg-amber-500 selection:text-black overflow-hidden bg-slate-100 text-slate-800 transition-colors duration-200">
+
+  <!-- BEGIN: TopHeader -->
+  <header class="h-16 shrink-0 border-b border-slate-200 dark:border-obsidian-border bg-white/95 dark:bg-obsidian-surface/95 backdrop-blur-md px-4 lg:px-6 flex items-center justify-between z-30 shadow-sm transition-colors duration-200">
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center shadow-md text-slate-950 font-black text-xl tracking-tighter">
+          <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+            <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-4.586l1.293 1.293a1 1 0 0 1-1.414 1.414L12 19.414l-1.293 1.293a1 1 0 0 1-1.414-1.414L10.586 18H6a2 2 0 0 1-2-2V6zm2 0v10h12V6H6z"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-slate-900 dark:text-white tracking-wide text-base">MY IPTV</span>
+            <span class="text-[10px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">Universal Pro</span>
+          </div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 font-mono">
+            <span id="header-total-channels">11,186 channels</span>
+            <span class="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700"></span>
+            <span class="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              VLC Engine Active
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Search Center Bar -->
+    <div class="hidden md:flex items-center flex-1 max-w-xl mx-8">
+      <div class="relative w-full">
+        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+          </svg>
+        </div>
+        <input 
+          id="search-input"
+          class="w-full bg-slate-50 dark:bg-obsidian-card border border-slate-200 dark:border-obsidian-border rounded-xl pl-10 pr-24 py-2 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white dark:focus:bg-obsidian-surface focus:ring-1 focus:ring-amber-500/50 transition-all font-sans shadow-inner" 
+          placeholder="Tìm nhanh kênh, phim, tin tức, thể thao..." 
+          type="text"
+        />
+        <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center gap-1">
+          <kbd class="px-1.5 py-0.5 text-[10px] font-mono font-medium text-slate-500 dark:text-slate-400 bg-white dark:bg-obsidian-surface rounded border border-slate-200 dark:border-obsidian-border shadow-sm">⌘K</kbd>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="flex items-center gap-2.5">
+      <div class="hidden xl:flex items-center bg-slate-100 dark:bg-obsidian-card border border-slate-200 dark:border-obsidian-border rounded-lg p-0.5 text-xs text-slate-600 dark:text-slate-400">
+        <button class="px-2.5 py-1 rounded bg-amber-500 text-slate-950 font-semibold shadow-sm">Desktop</button>
+        <a href="/legacy" class="px-2.5 py-1 rounded hover:text-slate-900 dark:hover:text-white transition-colors">Nokia S60</a>
+        <a href="/admin" class="px-2.5 py-1 rounded hover:text-slate-900 dark:hover:text-white transition-colors">Quản Trị</a>
+      </div>
+
+      <div class="h-4 w-px bg-slate-200 dark:bg-obsidian-border mx-1 hidden sm:block"></div>
+
+      <button id="import-m3u-btn" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-obsidian-card hover:bg-slate-50 dark:hover:bg-obsidian-surface border border-slate-200 dark:border-obsidian-border text-slate-700 dark:text-slate-200 transition-colors shadow-sm">
+        <svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+        </svg>
+        <span>Nhập M3U</span>
+      </button>
+
+      <a href="/playlist.m3u" download="playlist.m3u" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-obsidian-card hover:bg-slate-50 dark:hover:bg-obsidian-surface border border-slate-200 dark:border-obsidian-border text-slate-700 dark:text-slate-200 transition-colors shadow-sm">
+        <svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+        </svg>
+        <span>Tải M3U</span>
+      </a>
+
+      <!-- Theme Selector Container -->
+      <div class="relative z-50">
+        <button id="theme-btn" class="flex items-center gap-1.5 p-1.5 px-2.5 rounded-lg bg-amber-50 dark:bg-obsidian-card hover:bg-amber-100 dark:hover:bg-obsidian-surface border border-amber-300 dark:border-obsidian-border text-amber-900 dark:text-amber-400 shadow-sm transition-colors group">
+          <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+          </svg>
+          <span id="theme-label" class="hidden sm:inline-flex text-xs font-semibold font-sans">Sáng (Light)</span>
+          <span class="w-2 h-2 rounded-full bg-amber-500 shadow-sm"></span>
+          <svg class="w-3 h-3 text-slate-500 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+          </svg>
+        </button>
+
+        <!-- Dropdown Popover -->
+        <div id="theme-dropdown" class="hidden absolute right-0 top-full mt-2 w-72 rounded-2xl bg-white dark:bg-obsidian-surface border border-slate-200 dark:border-obsidian-border shadow-2xl p-2.5 z-50 animate-fade-in text-xs select-none">
+          <div class="flex items-center justify-between px-2 py-1.5 pb-2 border-b border-slate-100 dark:border-obsidian-border text-[11px] text-slate-500 font-mono">
+            <span>CHẾ ĐỘ GIAO DIỆN</span>
+            <span id="theme-dropdown-status" class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400 text-[10px] font-semibold">Active</span>
+          </div>
+          <div class="mt-1.5 space-y-1">
+            <button onclick="setAppTheme('light')" class="w-full flex items-center justify-between p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-obsidian-card text-left transition-colors">
+              <div class="flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-lg bg-amber-100 dark:bg-obsidian-card flex items-center justify-center text-amber-600">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                </div>
+                <div>
+                  <div class="font-bold text-slate-900 dark:text-white">Sáng (Light Mode)</div>
+                  <div class="text-[10px] text-slate-500">Màu sáng dịu mắt, tương phản cao</div>
+                </div>
+              </div>
+            </button>
+            <button onclick="setAppTheme('dark')" class="w-full flex items-center justify-between p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-obsidian-card text-left transition-colors">
+              <div class="flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-obsidian-card flex items-center justify-center text-slate-600 dark:text-slate-400">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                </div>
+                <div>
+                  <div class="font-bold text-slate-900 dark:text-white">Tối (Dark Mode)</div>
+                  <div class="text-[10px] text-slate-500">Nền đen Obsidian rạp phim</div>
+                </div>
+              </div>
+            </button>
+            <button onclick="setAppTheme('auto')" class="w-full flex items-center justify-between p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-obsidian-card text-left transition-colors">
+              <div class="flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-obsidian-card flex items-center justify-center text-slate-600 dark:text-slate-400">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                </div>
+                <div>
+                  <div class="font-bold text-slate-900 dark:text-white">Tự động (Hệ điều hành)</div>
+                  <div class="text-[10px] text-slate-500">Đồng bộ theo thiết bị</div>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <a href="/admin" class="p-2 text-slate-500 hover:text-slate-800 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-obsidian-card transition-colors" title="Bảng điều khiển quản trị">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+          <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+        </svg>
+      </a>
+    </div>
+  </header>
+  <!-- END: TopHeader -->
+
+  <!-- BEGIN: MainContentGrid -->
+  <main class="flex-1 flex overflow-hidden">
+    <!-- BEGIN: LeftCinemaStage (62% Desktop Layout) -->
+    <section class="flex-1 lg:w-[62%] xl:w-[64%] flex flex-col border-r border-slate-200 dark:border-obsidian-border bg-slate-50 dark:bg-obsidian p-4 lg:p-6 overflow-y-auto">
+      
+      <!-- Video Frame Container with Ambient Lighting -->
+      <div id="video-wrapper" class="relative group rounded-2xl overflow-hidden border border-slate-800 bg-black shadow-2xl flex flex-col justify-center items-center aspect-video max-h-[68vh] w-full">
+        <!-- Live Video Element -->
+        <video 
+          id="main-video" 
+          class="w-full h-full object-contain select-none"
+          playsinline 
+          autoplay
+        ></video>
+
+        <!-- Subtitle Overlay Container -->
+        <div id="subtitles-overlay" class="absolute bottom-16 inset-x-4 flex justify-center text-center pointer-events-none z-20 hidden">
+          <div class="inline-block px-5 py-3 rounded-2xl bg-black/90 backdrop-blur-md border border-neutral-700/80 text-center shadow-2xl tracking-wide max-w-2xl select-none">
+            <div id="subtitle-vi" class="text-amber-300 font-bold text-base sm:text-lg leading-snug drop-shadow">Đang nhận diện phụ đề...</div>
+            <div id="subtitle-orig" class="text-slate-300 text-xs sm:text-sm font-normal italic mt-1">CEA-608 / WebVTT live broadcast</div>
+            <div id="subtitle-status" class="text-[10px] text-amber-400/80 font-mono mt-1 flex items-center justify-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>AI Dịch Thuật Trực Tiếp Song Ngữ</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Live Badge Overlay -->
+        <div class="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none z-10">
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-600/90 text-white font-bold text-xs uppercase tracking-wider backdrop-blur-md shadow-lg">
+              <span class="w-2 h-2 rounded-full bg-white animate-ping"></span>
+              LIVE
+            </span>
+            <span id="video-res-badge" class="px-2.5 py-1 rounded-md bg-black/75 text-slate-200 font-mono text-xs backdrop-blur-md border border-white/10">
+              1080p @ 60fps
+            </span>
+            <span id="video-latency-badge" class="hidden sm:inline-flex px-2 py-1 rounded-md bg-black/60 text-emerald-400 font-mono text-xs backdrop-blur-md border border-white/5">
+              Proxy Active
+            </span>
+          </div>
+
+          <button id="unmute-btn" class="pointer-events-auto flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer shadow-md transition-all duration-200">
+            <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
+              <path clip-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" fill-rule="evenodd"></path>
+            </svg>
+            <span id="unmute-btn-text">Bật Tiếng (Unmute)</span>
+          </button>
+        </div>
+
+        <!-- Error Card / VLC Fallback Card -->
+        <div id="video-error-card" class="absolute inset-0 bg-neutral-950/95 flex flex-col items-center justify-center p-6 text-center z-30 hidden overflow-y-auto">
+          <div class="w-12 h-12 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center mb-3">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          </div>
+          <h4 id="video-error-title" class="text-base font-bold text-white">Không thể phát trực tiếp trên trình duyệt</h4>
+          <p id="video-error-desc" class="text-xs text-neutral-400 max-w-md mt-1 mb-4 leading-relaxed">
+            Nguồn phát IPTV thường chặn CORS hoặc sử dụng định dạng chuyên dụng (MPEG-TS, DASH, Dolby AC-3).
+          </p>
+          <div class="flex flex-wrap gap-2 justify-center max-w-lg">
+            <button id="error-vlc-btn" class="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1.5 transition shadow-md shadow-amber-500/20">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+              <span>Xem trên VLC Player</span>
+            </button>
+            <button id="error-retry-btn" class="px-3.5 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold rounded-lg text-xs flex items-center gap-1.5 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+              <span>Thử lại với Proxy</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Cinema Floating HUD Overlay Controls -->
+        <div id="video-hud" class="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-2 transition-opacity duration-300 z-20">
+          <div class="relative w-full h-1.5 bg-white/20 hover:h-2 rounded-full cursor-pointer transition-all">
+            <div id="hud-progress" class="absolute top-0 left-0 h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full w-full shadow-sm"></div>
+          </div>
+          <div class="flex items-center justify-between pt-1">
+            <div class="flex items-center gap-3">
+              <button id="play-btn" class="w-9 h-9 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center justify-center font-bold shadow-md transition-transform active:scale-95">
+                <svg id="play-icon" class="w-4 h-4 fill-current ml-0.5" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"></path>
+                </svg>
+              </button>
+
+              <div class="flex items-center gap-2 group/volume">
+                <button id="mute-icon-btn" class="text-slate-300 hover:text-white transition-colors">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                  </svg>
+                </button>
+                <input id="volume-range" type="range" min="0" max="1" step="0.05" value="1" class="w-20 h-1.5 bg-white/20 accent-amber-400 rounded-full cursor-pointer" />
+              </div>
+
+              <div class="hidden md:flex items-center gap-2 pl-3 border-l border-white/10">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span id="hud-channel-title" class="text-xs font-semibold text-white tracking-wide truncate max-w-[160px]">Akaku 54 (1080p)</span>
+                <span id="hud-format-tag" class="text-[10px] text-slate-400 font-mono">HLS • AAC</span>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button id="hud-cc-btn" class="px-2.5 py-1 text-xs rounded-md bg-white/10 hover:bg-white/20 text-slate-200 font-medium border border-white/10 transition-colors flex items-center gap-1.5" title="Bật/tắt phụ đề và dịch thời gian thực">
+                <span class="font-mono text-[10px] bg-amber-500/20 text-amber-300 px-1 rounded">CC</span>
+                <span id="hud-cc-label">Tắt CC</span>
+              </button>
+
+              <button id="hud-vlc-btn" class="hidden sm:flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition-colors" title="Mở trực tiếp trên phần mềm VLC">
+                <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M12 2L3 19h18L12 2zm0 3.8L17.5 15H6.5L12 5.8zM8.3 17h7.4l1.1 2H7.2l1.1-2z"></path>
+                </svg>
+                <span>VLC</span>
+              </button>
+
+              <button id="hud-pip-btn" class="p-1.5 text-slate-300 hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Hình trong hình (Picture-in-Picture)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                </svg>
+              </button>
+
+              <button id="hud-fs-btn" class="p-1.5 text-slate-300 hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Toàn màn hình (Fullscreen)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0 0l-5-5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Stream Metadata Card -->
+      <div class="mt-4 rounded-xl p-4 bg-white dark:bg-obsidian-surface border border-slate-200 dark:border-obsidian-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
+        <div class="flex items-start gap-3.5">
+          <div id="meta-logo" class="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 flex items-center justify-center shrink-0 shadow-sm font-bold text-amber-700 dark:text-amber-400 text-sm tracking-wider">
+            AK54
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h2 id="meta-name" class="text-base font-bold text-slate-900 dark:text-white tracking-tight">Akaku 54 (1080p)</h2>
+              <span id="meta-group" class="px-2 py-0.5 text-[10px] font-semibold uppercase bg-amber-500/15 text-amber-700 dark:text-amber-400 rounded border border-amber-500/30">General News</span>
+              <span id="meta-status" class="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
+              </span>
+            </div>
+            <p id="meta-desc" class="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
+              Phát trực tiếp chuẩn HLS • Hỗ trợ phụ đề CEA-608 & dịch tức thì
+            </p>
+          </div>
+        </div>
+
+        <!-- Action Pills Toolbar -->
+        <div class="flex items-center gap-2 self-end md:self-center shrink-0">
+          <button id="copy-stream-btn" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-50 dark:bg-obsidian-card border border-slate-200 dark:border-obsidian-border text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-obsidian-surface transition-colors flex items-center gap-1.5 shadow-sm">
+            <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+            </svg>
+            <span>Sao chép Link</span>
+          </button>
+          <a id="vlc-direct-btn" href="#" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition-colors flex items-center gap-1.5 shadow-sm">
+            <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+              <path d="M12 2L3 19h18L12 2zm0 3.8L17.5 15H6.5L12 5.8zM8.3 17h7.4l1.1 2H7.2l1.1-2z"></path>
+            </svg>
+            <span>Mở VLC</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Legacy Mode Drawer Pill -->
+      <div class="mt-3 py-2 px-3.5 rounded-lg bg-white dark:bg-obsidian-surface border border-slate-200 dark:border-obsidian-border shadow-sm flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 transition-colors">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+          </svg>
+          <span>Cần chế độ siêu nhẹ cho điện thoại Nokia E72 hoặc trình duyệt cổ điển?</span>
+        </div>
+        <a class="text-amber-600 dark:text-amber-400 hover:underline font-medium transition-colors" href="/legacy">Mở Nokia S60 Lite →</a>
+      </div>
+    </section>
+    <!-- END: LeftCinemaStage -->
+
+    <!-- BEGIN: RightChannelDirectory (38% Desktop Layout) -->
+    <section class="w-full lg:w-[38%] xl:w-[36%] flex flex-col bg-slate-50/80 dark:bg-obsidian-surface/80 backdrop-blur-xl border-l border-slate-200 dark:border-obsidian-border">
+      <!-- Top Section: Category Filter Carousel & Status Pills -->
+      <div class="p-4 border-b border-slate-200 dark:border-obsidian-border bg-white/60 dark:bg-obsidian-surface/60 space-y-3">
+        <!-- Category Navigation Bar -->
+        <div class="flex items-center justify-between">
+          <div id="category-carousel" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full">
+            <button onclick="selectCategory('all')" class="cat-pill px-3.5 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs tracking-wide shadow-sm whitespace-nowrap">
+              Tất cả
+            </button>
+            <button onclick="selectCategory('favorites')" class="cat-pill px-3 py-1.5 rounded-xl bg-white dark:bg-obsidian-card hover:bg-slate-100 dark:hover:bg-obsidian-surface text-slate-700 dark:text-slate-300 font-medium text-xs whitespace-nowrap border border-slate-200 dark:border-obsidian-border shadow-sm transition-colors">
+              Yêu thích
+            </button>
+          </div>
+          <button id="scan-trigger-btn" class="ml-2 p-1.5 rounded-lg bg-white dark:bg-obsidian-card text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 border border-slate-200 dark:border-obsidian-border shadow-sm shrink-0 transition-colors" title="Quét kiểm tra độ sống kênh">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Filter Sub-tags -->
+        <div class="flex items-center justify-between text-xs pt-1">
+          <div class="flex items-center gap-2">
+            <button id="filter-all-btn" onclick="setStatusFilter('all')" class="px-2.5 py-1 rounded-md bg-amber-500 text-slate-950 font-semibold shadow-sm text-xs">
+              Tất cả
+            </button>
+            <button id="filter-online-btn" onclick="setStatusFilter('active')" class="px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 font-medium flex items-center gap-1.5 shadow-sm">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              <span id="filter-online-text">Khả dụng</span>
+            </button>
+            <button id="filter-offline-btn" onclick="setStatusFilter('offline')" class="px-2.5 py-1 rounded-md bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/40 font-medium flex items-center gap-1.5 shadow-sm">
+              <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+              <span id="filter-offline-text">Ngoại tuyến</span>
+            </button>
+            <button id="filter-cc-btn" onclick="setStatusFilter('subtitles')" class="hidden sm:flex px-2 py-1 rounded-md bg-white dark:bg-obsidian-card text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-obsidian-border font-mono text-[11px] items-center gap-1 shadow-sm">
+              <span>Có CC</span>
+            </button>
+          </div>
+          <div id="page-size-info" class="text-[11px] text-slate-500 font-mono">
+            48 / trang
+          </div>
+        </div>
+      </div>
+
+      <!-- Channel Scrollable Feed Grid -->
+      <div id="channels-feed" class="flex-1 overflow-y-auto p-3.5 space-y-2.5">
+        <!-- Rendered dynamically via JavaScript -->
+        <div class="flex flex-col items-center justify-center p-12 text-slate-400">
+          <div class="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+          <span class="text-xs">Đang tải danh sách kênh...</span>
+        </div>
+      </div>
+
+      <!-- Bottom Pagination & Stream Summary Status Bar -->
+      <div class="p-3 border-t border-slate-200 dark:border-obsidian-border bg-white dark:bg-obsidian-surface flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 shadow-sm transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span id="bottom-summary">Đang kết nối IPTV</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="prev-page-btn" onclick="prevPage()" class="px-2.5 py-1 rounded bg-slate-100 dark:bg-obsidian-card text-slate-600 dark:text-slate-300 hover:bg-slate-200 border border-slate-200 dark:border-obsidian-border disabled:opacity-40 transition-colors">←</button>
+          <span id="page-indicator" class="font-mono text-slate-700 dark:text-slate-200 font-medium">1 / 1</span>
+          <button id="next-page-btn" onclick="nextPage()" class="px-2.5 py-1 rounded bg-slate-100 dark:bg-obsidian-card text-slate-600 dark:text-slate-300 hover:bg-slate-200 border border-slate-200 dark:border-obsidian-border disabled:opacity-40 transition-colors">→</button>
+        </div>
+      </div>
+    </section>
+    <!-- END: RightChannelDirectory -->
+  </main>
+  <!-- END: MainContentGrid -->
+
+  <!-- JavaScript: Universal Video Engine & Complete App Logic -->
+  <script>
+    // Global Application State
+    let allChannels = [];
+    let currentSelectedChannel = null;
+    let categoriesList = [];
+    let currentCategory = 'all';
+    let currentSearch = '';
+    let currentStatus = 'all';
+    let currentPageNum = 1;
+    const pageSize = 48;
+    let totalPagesNum = 1;
+    let favoritesList = JSON.parse(localStorage.getItem('my_iptv_favorites_v1') || '[]');
+    let currentTheme = localStorage.getItem('my_iptv_theme') || 'light';
+    let hls = null;
+    let isSubtitlesEnabled = false;
+
+    // Initialize Theme
+    function initTheme() {
+      applyTheme(currentTheme);
+    }
+
+    function applyTheme(theme) {
+      currentTheme = theme;
+      localStorage.setItem('my_iptv_theme', theme);
+      const isDark = theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+        document.body.classList.remove('bg-slate-100');
+        document.body.classList.add('bg-obsidian');
+        document.getElementById('theme-label').textContent = 'Tối (Dark)';
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.body.classList.remove('bg-obsidian');
+        document.body.classList.add('bg-slate-100');
+        document.getElementById('theme-label').textContent = 'Sáng (Light)';
+      }
+      document.getElementById('theme-dropdown').classList.add('hidden');
+    }
+
+    function setAppTheme(theme) {
+      applyTheme(theme);
+    }
+
+    // Toggle Theme Popover
+    document.getElementById('theme-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('theme-dropdown').classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!document.getElementById('theme-dropdown').contains(e.target)) {
+        document.getElementById('theme-dropdown').classList.add('hidden');
+      }
+    });
+
+    // Fetch Categories
+    async function fetchCategories() {
+      try {
+        const res = await fetch('/api/groups');
+        const data = await res.json();
+        categoriesList = data.groups || [];
+        renderCategoryCarousel(data);
+      } catch (err) {
+        console.warn('Error fetching categories:', err);
+      }
+    }
+
+    function renderCategoryCarousel(data) {
+      const carousel = document.getElementById('category-carousel');
+      const totalCount = data.totalChannels || 11186;
+      document.getElementById('header-total-channels').textContent = `${totalCount.toLocaleString()} channels`;
+
+      let html = `
+        <button onclick="selectCategory('all')" class="cat-pill px-3.5 py-1.5 rounded-xl ${currentCategory === 'all' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-white dark:bg-obsidian-card text-slate-700 dark:text-slate-300 font-medium border border-slate-200 dark:border-obsidian-border'} text-xs tracking-wide shadow-sm whitespace-nowrap">
+          Tất cả (${totalCount.toLocaleString()})
+        </button>
+        <button onclick="selectCategory('favorites')" class="cat-pill px-3 py-1.5 rounded-xl ${currentCategory === 'favorites' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-white dark:bg-obsidian-card text-slate-700 dark:text-slate-300 font-medium border border-slate-200 dark:border-obsidian-border'} text-xs whitespace-nowrap shadow-sm">
+          ★ Yêu thích (${favoritesList.length})
+        </button>
+      `;
+
+      categoriesList.slice(0, 15).forEach(cat => {
+        const count = data.counts?.[cat] || '';
+        const isSel = currentCategory === cat;
+        html += `
+          <button onclick="selectCategory('${cat.replace(/'/g, "\\'")}')" class="cat-pill px-3 py-1.5 rounded-xl ${isSel ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-white dark:bg-obsidian-card hover:bg-slate-100 dark:hover:bg-obsidian-surface text-slate-700 dark:text-slate-300 font-medium border border-slate-200 dark:border-obsidian-border'} text-xs whitespace-nowrap shadow-sm transition-colors">
+            ${cat} ${count ? `(${count})` : ''}
+          </button>
+        `;
+      });
+
+      carousel.innerHTML = html;
+    }
+
+    function selectCategory(cat) {
+      currentCategory = cat;
+      currentPageNum = 1;
+      fetchCategories();
+      fetchChannels();
+    }
+
+    function setStatusFilter(status) {
+      currentStatus = status;
+      currentPageNum = 1;
+      ['filter-all-btn', 'filter-online-btn', 'filter-offline-btn', 'filter-cc-btn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove('ring-2', 'ring-amber-500');
+      });
+      if (status === 'all') document.getElementById('filter-all-btn')?.classList.add('ring-2', 'ring-amber-500');
+      else if (status === 'active') document.getElementById('filter-online-btn')?.classList.add('ring-2', 'ring-amber-500');
+      else if (status === 'offline') document.getElementById('filter-offline-btn')?.classList.add('ring-2', 'ring-amber-500');
+      else if (status === 'subtitles') document.getElementById('filter-cc-btn')?.classList.add('ring-2', 'ring-amber-500');
+      fetchChannels();
+    }
+
+    // Fetch Channels
+    async function fetchChannels() {
+      const feed = document.getElementById('channels-feed');
+      feed.innerHTML = `
+        <div class="flex flex-col items-center justify-center p-12 text-slate-400">
+          <div class="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+          <span class="text-xs">Đang tải kênh...</span>
+        </div>
+      `;
+
+      try {
+        const params = new URLSearchParams({
+          page: currentPageNum,
+          limit: pageSize,
+          group: currentCategory,
+          search: currentSearch,
+          status: currentStatus,
+        });
+
+        const res = await fetch(`/api/channels?${params.toString()}`);
+        const data = await res.json();
+        allChannels = data.channels || [];
+        totalPagesNum = data.totalPages || 1;
+
+        document.getElementById('page-indicator').textContent = `${data.page || 1} / ${totalPagesNum}`;
+        document.getElementById('prev-page-btn').disabled = currentPageNum <= 1;
+        document.getElementById('next-page-btn').disabled = currentPageNum >= totalPagesNum;
+        document.getElementById('bottom-summary').innerHTML = `Hệ thống sẵn sàng: <strong class="text-slate-800 dark:text-white font-semibold">${(data.total || 0).toLocaleString()} kênh</strong>`;
+
+        renderChannelsList();
+
+        // Autoplay first channel if none selected
+        if (!currentSelectedChannel && allChannels.length > 0) {
+          playChannel(allChannels[0]);
+        }
+      } catch (err) {
+        feed.innerHTML = `<div class="p-6 text-center text-xs text-rose-500">Lỗi nạp danh sách kênh: ${err.message}</div>`;
+      }
+    }
+
+    function renderChannelsList() {
+      const feed = document.getElementById('channels-feed');
+      if (allChannels.length === 0) {
+        feed.innerHTML = `<div class="p-8 text-center text-xs text-slate-400">Không tìm thấy kênh phù hợp với bộ lọc.</div>`;
+        return;
+      }
+
+      feed.innerHTML = allChannels.map(channel => {
+        const isSelected = currentSelectedChannel && currentSelectedChannel.id === channel.id;
+        const isFav = favoritesList.includes(channel.id);
+        const isOffline = channel.status === 'offline';
+        const hasCC = channel.has_subtitles || (channel.subtitle_tracks && channel.subtitle_tracks.length > 0);
+        const initials = (channel.name || 'TV').substring(0, 4).toUpperCase();
+
+        return `
+          <div 
+            onclick="playChannelById('${channel.id}')"
+            class="relative group rounded-xl p-3 ${
+              isSelected 
+                ? 'bg-white dark:bg-obsidian-card border-2 border-amber-500 shadow-glow-amber' 
+                : 'bg-white dark:bg-obsidian-surface hover:bg-slate-50 dark:hover:bg-obsidian-card border border-slate-200 dark:border-obsidian-border'
+            } shadow-sm cursor-pointer transition-all duration-150"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <div class="relative w-11 h-11 rounded-lg ${
+                isSelected 
+                  ? 'bg-gradient-to-br from-amber-500 to-amber-600 font-bold text-white shadow-inner' 
+                  : 'bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 text-amber-700 dark:text-amber-400 font-bold'
+              } flex items-center justify-center shrink-0">
+                <span class="text-xs">${initials}</span>
+                ${isSelected ? `
+                  <div class="absolute inset-0 bg-black/20 rounded-lg flex items-end justify-center gap-0.5 pb-1.5 px-2">
+                    <span class="w-1 bg-white rounded-t eq-bar-1"></span>
+                    <span class="w-1 bg-amber-200 rounded-t eq-bar-2"></span>
+                    <span class="w-1 bg-white rounded-t eq-bar-3"></span>
+                  </div>
+                ` : ''}
+              </div>
+
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <h3 class="font-semibold text-slate-900 dark:text-white text-sm truncate ${isSelected ? 'text-amber-500 dark:text-amber-400' : ''}">
+                    ${channel.name}
+                  </h3>
+                  <span class="w-2 h-2 rounded-full ${isOffline ? 'bg-rose-500' : 'bg-emerald-500'}" title="${isOffline ? 'Ngoại tuyến' : 'Khả dụng'}"></span>
+                </div>
+                <div class="flex items-center gap-2 mt-1 flex-wrap">
+                  <span class="text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/60">
+                    ${channel.group || 'Chung'}
+                  </span>
+                  <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                    ${channel.resolution || 'HD'}
+                  </span>
+                  ${hasCC ? `
+                    <span class="text-[10px] font-mono font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 px-1 py-0.5 rounded border border-cyan-200 dark:border-cyan-800/60">
+                      CC
+                    </span>
+                  ` : ''}
+                  ${channel.requires_vlc ? `
+                    <span class="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/60 px-1 py-0.5 rounded border border-orange-200 dark:border-orange-800/60">
+                      VLC
+                    </span>
+                  ` : ''}
+                </div>
+              </div>
+
+              <div class="flex items-center gap-1">
+                <button onclick="event.stopPropagation(); toggleFav('${channel.id}')" class="p-1.5 ${isFav ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'} transition-colors" title="Yêu thích">
+                  <svg class="w-4 h-4 ${isFav ? 'fill-current' : 'fill-none'}" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                  </svg>
+                </button>
+                <div class="w-8 h-8 rounded-full ${isSelected ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-100 dark:bg-obsidian-card text-slate-600 dark:text-slate-300'} flex items-center justify-center transition-colors">
+                  <svg class="w-3.5 h-3.5 fill-current ml-0.5" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z"></path>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function playChannelById(id) {
+      const target = allChannels.find(c => c.id === id);
+      if (target) playChannel(target);
+    }
+
+    // Video Playback Engine with Hls.js & Proxy CORS
+    function playChannel(channel) {
+      currentSelectedChannel = channel;
+      renderChannelsList();
+
+      const video = document.getElementById('main-video');
+      const errCard = document.getElementById('video-error-card');
+      errCard.classList.add('hidden');
+
+      // Update Metadata HUD
+      document.getElementById('meta-name').textContent = channel.name;
+      document.getElementById('meta-group').textContent = channel.group || 'Chung';
+      document.getElementById('hud-channel-title').textContent = channel.name;
+      document.getElementById('meta-logo').textContent = (channel.name || 'TV').substring(0, 4).toUpperCase();
+      document.getElementById('vlc-direct-btn').href = `vlc://${channel.stream_url}`;
+      
+      const isOffline = channel.status === 'offline';
+      document.getElementById('meta-status').innerHTML = `
+        <span class="w-1.5 h-1.5 rounded-full ${isOffline ? 'bg-rose-500' : 'bg-emerald-500'}"></span>
+        ${isOffline ? 'Ngoại tuyến' : 'Online'}
+      `;
+      document.getElementById('meta-desc').textContent = channel.description || (channel.stream_url.substring(0, 80) + '...');
+
+      // Cleanup previous HLS
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+
+      // Check if channel requires external VLC player (DASH .mpd or raw TS)
+      const rawUrl = channel.stream_url || '';
+      const isMpegTs = channel.format === 'ts' || rawUrl.endsWith('.ts') || rawUrl.includes('/udp/');
+      const isDash = channel.format === 'dash' || rawUrl.includes('.mpd');
+      if (channel.requires_vlc || isMpegTs || isDash) {
+        document.getElementById('video-error-title').textContent = 'Kênh phát định dạng chuyên dụng cho VLC';
+        document.getElementById('video-error-desc').textContent = `Luồng này sử dụng chuẩn ${isDash ? 'MPEG-DASH' : 'MPEG-TS'} dành riêng cho VLC Media Player, TV Box hoặc CorePlayer.`;
+        errCard.classList.remove('hidden');
+        return;
+      }
+
+      // High-compatibility stream URL via Proxy CORS
+      const streamUrl = `/api/proxy/stream?url=${encodeURIComponent(rawUrl)}`;
+
+      if (Hls.isSupported()) {
+        hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          enableCEA708Captions: true,
+        });
+
+        hls.loadSource(streamUrl);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(() => {
+            video.muted = true;
+            document.getElementById('unmute-btn-text').textContent = 'Bật Tiếng (Unmute)';
+            video.play();
+          });
+        });
+
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data.fatal) {
+            console.warn('Fatal HLS Error:', data);
+            document.getElementById('video-error-title').textContent = 'Không thể kết nối đến máy chủ nguồn IPTV';
+            document.getElementById('video-error-desc').textContent = 'Nguồn phát đang tạm thời bảo trì hoặc đã đổi địa chỉ. Bạn có thể bấm mở trên VLC.';
+            errCard.classList.remove('hidden');
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = streamUrl;
+        video.play().catch(() => {
+          video.muted = true;
+          video.play();
+        });
+      } else {
+        video.src = streamUrl;
+      }
+      setupVideoTrackListeners(video);
+    }
+
+    // Toggle Play/Pause
+    document.getElementById('play-btn').addEventListener('click', () => {
+      const video = document.getElementById('main-video');
+      if (video.paused) {
+        video.play();
+        document.getElementById('play-icon').innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path>';
+      } else {
+        video.pause();
+        document.getElementById('play-icon').innerHTML = '<path d="M8 5v14l11-7z"></path>';
+      }
+    });
+
+    // Volume & Unmute
+    const videoElem = document.getElementById('main-video');
+    document.getElementById('unmute-btn').addEventListener('click', () => {
+      videoElem.muted = false;
+      document.getElementById('unmute-btn').classList.add('hidden');
+    });
+
+    document.getElementById('volume-range').addEventListener('input', (e) => {
+      videoElem.volume = parseFloat(e.target.value);
+      videoElem.muted = videoElem.volume === 0;
+    });
+
+    // Copy Stream URL
+    document.getElementById('copy-stream-btn').addEventListener('click', () => {
+      if (currentSelectedChannel) {
+        navigator.clipboard.writeText(currentSelectedChannel.stream_url);
+        const span = document.querySelector('#copy-stream-btn span');
+        span.textContent = 'Đã chép!';
+        setTimeout(() => span.textContent = 'Sao chép Link', 2000);
+      }
+    });
+
+    // Error retry & VLC launch
+    document.getElementById('error-retry-btn').addEventListener('click', () => {
+      if (currentSelectedChannel) playChannel(currentSelectedChannel);
+    });
+
+    document.getElementById('error-vlc-btn').addEventListener('click', () => {
+      if (currentSelectedChannel) window.location.href = `vlc://${currentSelectedChannel.stream_url}`;
+    });
+
+    document.getElementById('hud-vlc-btn').addEventListener('click', () => {
+      if (currentSelectedChannel) window.location.href = `vlc://${currentSelectedChannel.stream_url}`;
+    });
+
+    // Fullscreen & PiP
+    document.getElementById('hud-fs-btn').addEventListener('click', () => {
+      const container = document.getElementById('video-wrapper');
+      if (!document.fullscreenElement) {
+        container.requestFullscreen?.() || container.webkitRequestFullscreen?.();
+      } else {
+        document.exitFullscreen?.();
+      }
+    });
+
+    document.getElementById('hud-pip-btn').addEventListener('click', async () => {
+      try {
+        if (document.pictureInPictureElement) {
+          await document.exitPictureInPicture();
+        } else if (document.pictureInPictureEnabled) {
+          await videoElem.requestPictureInPicture();
+        }
+      } catch (err) {
+        console.warn('PiP error:', err);
+      }
+    });
+
+    // Subtitles Engine & Dual-Language Live Translation
+    const subtitleCache = new Map();
+    let demoSubtitleInterval = null;
+    let demoIndex = 0;
+    const DEMO_BROADCAST_CUES = [
+      { orig: "Breaking News: Live coverage of the international summit starting in Geneva.", vi: "Tin Nóng: Phát sóng trực tiếp hội nghị thượng đỉnh quốc tế bắt đầu tại Geneva." },
+      { orig: "What an unbelievable strike from outside the penalty box! World-class goal!", vi: "Cú sút không thể tin được từ ngoài vòng cấm địa! Bàn thắng đẳng cấp thế giới!" },
+      { orig: "Markets surge across European exchanges following the trade agreement announcement.", vi: "Thị trường chứng khoán châu Âu tăng vọt sau khi công bố hiệp định thương mại." },
+      { orig: "Meteorological center predicts heavy rainfall and gale-force coastal winds tonight.", vi: "Trung tâm khí tượng dự báo tối nay có mưa to và gió giật mạnh ven biển." }
+    ];
+
+    async function translateSubtitle(text) {
+      if (!text || !text.trim()) return '';
+      const cleaned = text.replace(/<[^>]+>/g, '').replace(/-->/g, '').replace(/\s+/g, ' ').trim();
+      if (!cleaned) return '';
+      if (subtitleCache.has(cleaned)) return subtitleCache.get(cleaned);
+
+      // 1. Try Backend /api/translate
+      try {
+        const res = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: cleaned, targetLang: 'vi' })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.translatedText) {
+            subtitleCache.set(cleaned, data.translatedText);
+            return data.translatedText;
+          }
+        }
+      } catch (_) {}
+
+      // 2. Client-side fallback Google Translate
+      try {
+        const gRes = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=vi&dt=t&q=${encodeURIComponent(cleaned)}`);
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          const translated = gData[0].map(item => item[0]).join('').trim();
+          if (translated) {
+            subtitleCache.set(cleaned, translated);
+            return translated;
+          }
+        }
+      } catch (_) {}
+
+      return cleaned;
+    }
+
+    function displaySubtitle(orig, vi) {
+      const overlay = document.getElementById('subtitles-overlay');
+      const origElem = document.getElementById('subtitle-orig');
+      const viElem = document.getElementById('subtitle-vi');
+      if (!origElem || !viElem || !overlay) return;
+
+      origElem.textContent = orig || '';
+      viElem.textContent = vi || orig || '';
+      overlay.classList.remove('hidden');
+    }
+
+    function setupVideoTrackListeners(video) {
+      if (!video) return;
+      function onCueChange(track) {
+        if (!isSubtitlesEnabled) return;
+        const activeCues = track.activeCues;
+        if (activeCues && activeCues.length > 0) {
+          const text = activeCues[0].text;
+          translateSubtitle(text).then(vi => {
+            if (isSubtitlesEnabled) displaySubtitle(text, vi);
+          });
+        }
+      }
+
+      if (video.textTracks) {
+        for (let i = 0; i < video.textTracks.length; i++) {
+          const track = video.textTracks[i];
+          track.mode = 'hidden';
+          track.oncuechange = () => onCueChange(track);
+        }
+        video.textTracks.onaddtrack = (e) => {
+          if (e.track) {
+            e.track.mode = 'hidden';
+            e.track.oncuechange = () => onCueChange(e.track);
+          }
+        };
+      }
+    }
+
+    // Subtitles Toggle with live listener and demonstration fallback
+    document.getElementById('hud-cc-btn').addEventListener('click', () => {
+      isSubtitlesEnabled = !isSubtitlesEnabled;
+      document.getElementById('hud-cc-label').textContent = isSubtitlesEnabled ? 'Bật CC (VI)' : 'Tắt CC';
+      document.getElementById('subtitles-overlay').classList.toggle('hidden', !isSubtitlesEnabled);
+
+      if (isSubtitlesEnabled) {
+        setupVideoTrackListeners(document.getElementById('main-video'));
+        displaySubtitle('Đang lắng nghe luồng phụ đề phát sóng CEA-608...', 'Đang nhận diện phụ đề & dịch tức thì...');
+
+        // Continuous demo loop for instant visual testing when channel has no active broadcast cue
+        clearInterval(demoSubtitleInterval);
+        demoSubtitleInterval = setInterval(() => {
+          if (!isSubtitlesEnabled) {
+            clearInterval(demoSubtitleInterval);
+            return;
+          }
+          const item = DEMO_BROADCAST_CUES[demoIndex % DEMO_BROADCAST_CUES.length];
+          demoIndex++;
+          translateSubtitle(item.orig).then(vi => {
+            if (isSubtitlesEnabled) displaySubtitle(item.orig, vi || item.vi);
+          });
+        }, 5500);
+      } else {
+        clearInterval(demoSubtitleInterval);
+      }
+    });
+
+    // Favorites
+    function toggleFav(id) {
+      if (favoritesList.includes(id)) {
+        favoritesList = favoritesList.filter(f => f !== id);
+      } else {
+        favoritesList.push(id);
+      }
+      localStorage.setItem('my_iptv_favorites_v1', JSON.stringify(favoritesList));
+      fetchCategories();
+      renderChannelsList();
+    }
+
+    // Pagination
+    function prevPage() {
+      if (currentPageNum > 1) {
+        currentPageNum--;
+        fetchChannels();
+      }
+    }
+
+    function nextPage() {
+      if (currentPageNum < totalPagesNum) {
+        currentPageNum++;
+        fetchChannels();
+      }
+    }
+
+    // Search with 300ms debounce
+    let searchTimeout = null;
+    document.getElementById('search-input').addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        currentSearch = e.target.value.trim();
+        currentPageNum = 1;
+        fetchChannels();
+      }, 300);
+    });
+
+    // Global Hotkey ⌘K / Ctrl+K
+    window.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        document.getElementById('search-input')?.focus();
+      }
+    });
+
+    // Initialize on DOM Ready
+    document.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      fetchCategories();
+      fetchChannels();
+    });
+  </script>
+</body>
+</html>

@@ -143,10 +143,18 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
                 <span>Không khả dụng</span>
               </span>
+            ) : channel.requires_vlc || channel.format === 'dash' || channel.format === 'ts' ? (
+              <span
+                className="text-[10px] font-bold text-orange-300 bg-orange-950/80 border border-orange-600/40 px-1.5 py-0.2 rounded flex items-center gap-1 shadow-sm"
+                title="Luồng chuyên dụng MPEG-TS / DASH / AC-3 (Cần mở trên VLC Media Player hoặc TV Box)"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+                <span>Cần VLC</span>
+              </span>
             ) : (
               <span className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span>Khả dụng</span>
+                <span>Web HLS</span>
               </span>
             )}
           </div>

@@ -203,6 +203,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const subtitleClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCueTextRef = useRef<string>('');
   const lastCueTimeRef = useRef<number>(0);
+  const isSwitchingSourceRef = useRef<boolean>(false);
+  const cueDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mediaErrorRetryCountRef = useRef<number>(0);
 
   // Synchronize subtitle refs for stable access in HLS event callbacks
   const subtitlesEnabledRef = useRef(subtitlesEnabled);
@@ -321,49 +324,55 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
 
-      const cueId = `cue_${now}_${Math.random().toString(36).substring(2, 6)}`;
-      setCurrentSubtitle({
-        id: cueId,
-        originalText: cleaned,
-        translatedText: '',
-        targetLang: subtitleTargetLangRef.current,
-        engine: subtitleEngineRef.current,
-        timestamp: now,
-        active: true,
-        isLoading: true,
-      });
-
-      if (subtitleClearTimerRef.current) {
-        clearTimeout(subtitleClearTimerRef.current);
+      if (cueDebounceTimerRef.current) {
+        clearTimeout(cueDebounceTimerRef.current);
       }
 
-      try {
-        const res = await translateSubtitleText(
-          cleaned,
-          subtitleTargetLangRef.current,
-          subtitleEngineRef.current
-        );
-        setCurrentSubtitle((prev) => {
-          if (prev && prev.id === cueId) {
-            return {
-              ...prev,
-              translatedText: res.translatedText,
-              detectedLang: res.detectedLang,
-              latencyMs: res.latencyMs,
-              isLoading: false,
-            };
-          }
-          return prev;
+      cueDebounceTimerRef.current = setTimeout(async () => {
+        const cueId = `cue_${now}_${Math.random().toString(36).substring(2, 6)}`;
+        setCurrentSubtitle({
+          id: cueId,
+          originalText: cleaned,
+          translatedText: '',
+          targetLang: subtitleTargetLangRef.current,
+          engine: subtitleEngineRef.current,
+          timestamp: now,
+          active: true,
+          isLoading: true,
         });
-      } catch (err) {
-        console.warn('[VideoPlayer] Subtitle translation error:', err);
-        setCurrentSubtitle((prev) => (prev && prev.id === cueId ? { ...prev, isLoading: false } : prev));
-      }
 
-      // Auto clear cue after 5.5 seconds if no new speech cue arrives
-      subtitleClearTimerRef.current = setTimeout(() => {
-        setCurrentSubtitle((prev) => (prev && prev.id === cueId ? { ...prev, active: false } : prev));
-      }, 5500);
+        if (subtitleClearTimerRef.current) {
+          clearTimeout(subtitleClearTimerRef.current);
+        }
+
+        try {
+          const res = await translateSubtitleText(
+            cleaned,
+            subtitleTargetLangRef.current,
+            subtitleEngineRef.current
+          );
+          setCurrentSubtitle((prev) => {
+            if (prev && prev.id === cueId) {
+              return {
+                ...prev,
+                translatedText: res.translatedText,
+                detectedLang: res.detectedLang,
+                latencyMs: res.latencyMs,
+                isLoading: false,
+              };
+            }
+            return prev;
+          });
+        } catch (err) {
+          console.warn('[VideoPlayer] Subtitle translation error:', err);
+          setCurrentSubtitle((prev) => (prev && prev.id === cueId ? { ...prev, isLoading: false } : prev));
+        }
+
+        // Auto clear cue after 5.5 seconds if no new speech cue arrives
+        subtitleClearTimerRef.current = setTimeout(() => {
+          setCurrentSubtitle((prev) => (prev && prev.id === cueId ? { ...prev, active: false } : prev));
+        }, 5500);
+      }, 250);
     },
     [persistDetectedSubtitles]
   );
@@ -371,13 +380,35 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleToggleSubtitles = useCallback(() => {
     setSubtitlesEnabled((prev) => {
       const next = !prev;
-      if (!next && subtitleClearTimerRef.current) {
-        clearTimeout(subtitleClearTimerRef.current);
+      if (!next) {
+        if (subtitleClearTimerRef.current) {
+          clearTimeout(subtitleClearTimerRef.current);
+        }
         setCurrentSubtitle(null);
+        if (hlsRef.current) {
+          hlsRef.current.subtitleTrack = -1;
+        }
+        if (videoRef.current && videoRef.current.textTracks) {
+          for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+            videoRef.current.textTracks[i].mode = 'disabled';
+          }
+        }
+      } else {
+        // Toggled ON: Activate subtitle track
+        if (hlsRef.current && hlsRef.current.subtitleTracks && hlsRef.current.subtitleTracks.length > 0) {
+          const targetId = selectedSubtitleTrackId >= 0 && selectedSubtitleTrackId < 1000 ? selectedSubtitleTrackId : 0;
+          hlsRef.current.subtitleTrack = targetId;
+          setSelectedSubtitleTrackId(targetId);
+        }
+        if (videoRef.current && videoRef.current.textTracks) {
+          for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+            videoRef.current.textTracks[i].mode = 'hidden';
+          }
+        }
       }
       return next;
     });
-  }, []);
+  }, [selectedSubtitleTrackId]);
 
   const handleSelectSubtitleTrack = useCallback((trackId: number) => {
     setSelectedSubtitleTrackId(trackId);
@@ -604,13 +635,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, 600);
   }, []);
 
-  // Proxy state: auto-enable if stream is insecure HTTP loaded on HTTPS, or when direct fails
-  const [useProxy, setUseProxy] = useState<boolean>(() => {
-    if (typeof window !== 'undefined' && channel?.stream_url) {
-      return window.location.protocol === 'https:' && channel.stream_url.startsWith('http:');
-    }
-    return false;
-  });
+  // Proxy state: default to TRUE for browser security (CORS & Mixed-Content bypass)
+  const [useProxy, setUseProxy] = useState<boolean>(true);
 
   // Calculate actual playback URL
   const getStreamSource = useCallback(
@@ -640,6 +666,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       setHasError(false);
       setErrorMessage('');
       setIsLoading(true);
+      isSwitchingSourceRef.current = true;
+      mediaErrorRetryCountRef.current = 0;
 
       // Initialize subtitle tracks from channel data if available
       if (channel.subtitle_tracks && channel.subtitle_tracks.length > 0) {
@@ -679,6 +707,33 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
 
       const rawUrl = channel.stream_url.trim();
+
+      // Detect non-HLS formats (MPEG-TS, MPEG-DASH) or channels explicitly requiring VLC
+      const isMpegTs =
+        channel.format === 'ts' ||
+        rawUrl.endsWith('.ts') ||
+        rawUrl.includes('/udp/') ||
+        rawUrl.includes(':4022/');
+      const isDash =
+        channel.format === 'dash' ||
+        rawUrl.includes('.mpd');
+      const requiresVlcPlayer = Boolean(channel.requires_vlc || isMpegTs || isDash);
+
+      if (requiresVlcPlayer) {
+        setIsLoading(false);
+        setHasError(true);
+        const formatLabel = isDash
+          ? 'MPEG-DASH (.mpd)'
+          : isMpegTs
+          ? 'MPEG-TS (.ts)'
+          : channel.audio_codec || 'chuyên dụng';
+        setErrorMessage(
+          `Kênh này sử dụng định dạng ${formatLabel} dành riêng cho ứng dụng VLC Player, TV Box hoặc CorePlayer. Trình duyệt Web không hỗ trợ giải mã trực tiếp luồng này.`
+        );
+        isSwitchingSourceRef.current = false;
+        return;
+      }
+
       const effectiveSource = getStreamSource(rawUrl, proxyMode);
       const isHlsStream =
         rawUrl.includes('.m3u8') ||
@@ -694,7 +749,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           backBufferLength: 60,
           maxBufferLength: 30,
           enableCEA708Captions: true,
-          renderTextTracksNatively: false,
+          renderTextTracksNatively: true,
           xhrSetup: (xhr) => {
             xhr.withCredentials = false;
           },
@@ -834,8 +889,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         };
         setupTextTracksFallback();
 
-        // Real-time subtitle cue arrival (Hls.Events.CUE_ENTER & CUES_PARSED)
-        const cueEnterEvent = ((Hls.Events as any).CUE_ENTER || (Hls.Events as any).EVENT_CUE_ENTER || 'hlsEventCueEnter') as any;
+        // Real-time subtitle cue arrival (Hls.Events.EVENT_CUE_ENTER)
+        const cueEnterEvent = ((Hls.Events as any).EVENT_CUE_ENTER || (Hls.Events as any).CUE_ENTER || 'eventCueEnter') as any;
         hls.on(cueEnterEvent, (_event: any, data: any) => {
           const cue = data?.cue || data;
           const text = cue?.text || (typeof cue === 'string' ? cue : '');
@@ -844,18 +899,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         });
 
-        hls.on(Hls.Events.CUES_PARSED, (_event: any, data: any) => {
-          if (data && Array.isArray(data.cues)) {
-            data.cues.forEach((c: any) => {
-              if (c && c.text) {
-                handleProcessCueText(c.text);
-              }
-            });
-            scanAndRecordTextTracks();
-          }
+        // When subtitle segments finish parsing, sync detected tracks with state
+        hls.on(Hls.Events.CUES_PARSED, (_event: any, _data: any) => {
+          scanAndRecordTextTracks();
+        });
+
+        hls.on(Hls.Events.NON_NATIVE_TEXT_TRACKS_FOUND, (_event: any, _data: any) => {
+          scanAndRecordTextTracks();
         });
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          isSwitchingSourceRef.current = false;
           setIsLoading(false);
 
           if (hls.levels && hls.levels.length > 0) {
@@ -944,9 +998,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         hls.on(Hls.Events.ERROR, (_event, data) => {
           console.warn('HLS Event Error:', data);
+          isSwitchingSourceRef.current = false;
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
+                if (data.details === 'fragLoadError' || data.details === 'fragLoadTimeOut') {
+                  console.warn('Live fragment load failed, skipping to next live fragment...', data.details);
+                  hls.startLoad();
+                  return;
+                }
                 if (!proxyMode) {
                   // Direct stream failed (CORS or server blocked). Auto switch to proxy!
                   console.info('Direct stream blocked by CORS/network. Auto-enabling Proxy CORS...');
@@ -974,10 +1034,32 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 }
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
-                try {
-                  hls.recoverMediaError();
-                } catch {
-                  // ignore
+                mediaErrorRetryCountRef.current++;
+                if (mediaErrorRetryCountRef.current === 1) {
+                  try {
+                    hls.recoverMediaError();
+                  } catch {
+                    // ignore
+                  }
+                } else if (mediaErrorRetryCountRef.current === 2) {
+                  try {
+                    hls.swapAudioCodec();
+                    hls.recoverMediaError();
+                  } catch {
+                    // ignore
+                  }
+                } else {
+                  setHasError(true);
+                  setErrorMessage(
+                    'Định dạng âm thanh hoặc hình ảnh (Dolby AC-3 / MPEG-2) không được hỗ trợ bởi trình duyệt này. Hãy bấm "Xem trên VLC player" để mở luồng mượt mà.'
+                  );
+                  setIsLoading(false);
+                  try {
+                    hls.detachMedia();
+                    hls.destroy();
+                  } catch {
+                    // ignore
+                  }
                 }
                 break;
               default:
@@ -1139,10 +1221,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Trigger playback when channel changes, playTrigger increments, or useProxy toggles
   useEffect(() => {
     if (!channel) return;
-    const initialProxy =
-      typeof window !== 'undefined' &&
-      window.location.protocol === 'https:' &&
-      channel.stream_url.startsWith('http:');
+    const initialProxy = true; // Default to proxy CORS for high-compatibility browser playback
     setUseProxy(initialProxy);
     startPlayback(initialProxy);
 
@@ -1346,6 +1425,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
       // Intercept media error event to prevent unhandled bubbling to window
       e.stopPropagation();
+      if (isSwitchingSourceRef.current) {
+        console.info('Ignoring transient video error during source switch cleanup');
+        return;
+      }
       const video = videoRef.current;
       const mediaErr = video?.error;
       console.warn('HTML5 Video Error intercepted:', mediaErr?.code, mediaErr?.message);

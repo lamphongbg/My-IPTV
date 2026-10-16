@@ -267,6 +267,11 @@ app.get('/channel/:id', (req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+app.use(express.static(path.resolve(__dirname, 'public')));
+app.get(['/cinema', '/cinema.html'], (_req: Request, res: Response) => {
+  res.sendFile(path.resolve(__dirname, 'public', 'cinema.html'));
+});
+
 app.get('/', (req: Request, res: Response, next: NextFunction) => {
   const deviceInfo = (req as any).deviceInfo;
   if (deviceInfo.recommendedView === 'legacy') {

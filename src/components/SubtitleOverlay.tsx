@@ -59,18 +59,20 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
             <p
               className={`${sizeClasses.translated} text-amber-300 tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]`}
             >
-              {currentSubtitle.isLoading ? (
-                <span className="inline-flex items-center gap-1.5 opacity-90 animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                  <span>Đang dịch...</span>
-                </span>
+              {currentSubtitle.translatedText ? (
+                currentSubtitle.translatedText
               ) : (
-                currentSubtitle.translatedText || currentSubtitle.originalText
+                <span className="inline-flex items-center gap-1.5">
+                  <span>{currentSubtitle.originalText}</span>
+                  {currentSubtitle.isLoading && (
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" title="Đang dịch tức thì..." />
+                  )}
+                </span>
               )}
             </p>
 
             {/* Original Text in soft italic neutral */}
-            {hasOriginal && (
+            {hasOriginal && currentSubtitle.translatedText && (
               <p
                 className={`${sizeClasses.original} text-neutral-300/90 font-normal italic tracking-normal drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]`}
               >
@@ -85,13 +87,15 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
           <p
             className={`${sizeClasses.translated} text-amber-300 tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]`}
           >
-            {currentSubtitle.isLoading ? (
-              <span className="inline-flex items-center gap-1.5 opacity-90 animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                <span>Đang dịch...</span>
-              </span>
+            {currentSubtitle.translatedText ? (
+              currentSubtitle.translatedText
             ) : (
-              currentSubtitle.translatedText || currentSubtitle.originalText
+              <span className="inline-flex items-center gap-1.5">
+                <span>{currentSubtitle.originalText}</span>
+                {currentSubtitle.isLoading && (
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" title="Đang dịch tức thì..." />
+                )}
+              </span>
             )}
           </p>
         )}
