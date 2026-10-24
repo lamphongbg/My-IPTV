@@ -35,6 +35,7 @@ import {
   Cloud,
   Download,
   Subtitles,
+  Settings,
 } from 'lucide-react';
 
 const ADMIN_TOKEN_KEY = 'my_iptv_admin_token';
@@ -76,6 +77,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [copiedSchema, setCopiedSchema] = useState<boolean>(false);
   const [copiedEnv, setCopiedEnv] = useState<boolean>(false);
+  const [isConfigCloudOpen, setIsConfigCloudOpen] = useState<boolean>(false);
+  const [cloudForm, setCloudForm] = useState({
+    databaseUrl: '',
+    supabaseUrl: '',
+    supabaseKey: '',
+  });
 
   // Modals & Forms
   const [isAddPlaylistOpen, setIsAddPlaylistOpen] = useState<boolean>(false);
@@ -302,10 +309,80 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
       if (data.connected) {
         showNotification(`Kết nối Supabase thành công (${data.pingMs}ms)!`);
       } else {
-        showNotification('Chưa kết nối được Supabase. Hãy kiểm tra biến môi trường DATABASE_URL hoặc SUPABASE_URL.', 'error');
+        showNotification(data.error || 'Chưa kết nối được Supabase. Hãy kiểm tra biến môi trường hoặc cấu hình.', 'error');
       }
     } catch (err: any) {
       showNotification('Lỗi kiểm tra kết nối: ' + err.message, 'error');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handleOpenCloudConfig = async () => {
+    try {
+      const res = await fetch('/api/admin/supabase/config', { headers: authHeaders() });
+      if (res.ok) {
+        const d = await res.json();
+        setCloudForm({
+          databaseUrl: d.databaseUrlMasked || '',
+          supabaseUrl: d.supabaseUrl || '',
+          supabaseKey: '',
+        });
+      }
+    } catch {}
+    setIsConfigCloudOpen(true);
+  };
+
+  const handleSaveCloudConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSyncingCloud(true);
+    try {
+      const res = await fetch('/api/admin/supabase/config', {
+        method: 'POST',
+        headers: {
+          ...authHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          enabled: true,
+          databaseUrl: cloudForm.databaseUrl.includes('***') ? undefined : cloudForm.databaseUrl || undefined,
+          supabaseUrl: cloudForm.supabaseUrl || undefined,
+          supabaseKey: cloudForm.supabaseKey || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.status) {
+        setSupabaseStatus(data.status);
+        if (data.status.connected) {
+          showNotification(`Kết nối Supabase thành công (${data.status.pingMs}ms)!`);
+          setIsConfigCloudOpen(false);
+        } else {
+          showNotification(data.status.error || 'Không thể kết nối Supabase với thông tin vừa nhập', 'error');
+        }
+      }
+    } catch (err: any) {
+      showNotification('Lỗi lưu cấu hình: ' + err.message, 'error');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handleDisconnectCloud = async () => {
+    if (!confirm('Bạn có chắc muốn chuyển hẳn sang chế độ Local Storage cục bộ và ngừng kết nối với Supabase?')) return;
+    setIsSyncingCloud(true);
+    try {
+      const res = await fetch('/api/admin/supabase/disconnect', {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (data.status) {
+        setSupabaseStatus(data.status);
+        showNotification('Đã chuyển sang chế độ Local Storage an toàn!');
+        setIsConfigCloudOpen(false);
+      }
+    } catch (err: any) {
+      showNotification('Lỗi khi chuyển chế độ: ' + err.message, 'error');
     } finally {
       setIsSyncingCloud(false);
     }
@@ -1745,7 +1822,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                 ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-200'
                 : 'bg-amber-950/20 border-amber-500/30 text-amber-200'
             }`}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
                   <div className={`p-2 rounded-xl mt-0.5 ${
                     supabaseStatus?.connected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
@@ -1764,7 +1841,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                     <p className="text-xs text-neutral-300 mt-1">
                       {supabaseStatus?.connected
                         ? `Đám mây hiện đang lưu ${supabaseStatus.channelCount?.toLocaleString('vi-VN')} kênh. Mọi thay đổi trạng thái sẽ được lưu trữ vĩnh viễn và không bị xóa khi Render khởi động lại!`
-                        : 'Render có cơ chế xoay vòng container (ephemeral disk), mỗi lần deploy lại file trên đĩa sẽ bị đặt lại. Hãy cấu hình Supabase theo hướng dẫn bên dưới để bảo lưu toàn bộ kênh vĩnh viễn.'}
+                        : 'Ứng dụng đang vận hành hoàn toàn ổn định với dữ liệu lưu trên đĩa máy chủ (data/channels.json). Nếu muốn bảo lưu vĩnh viễn trên Render, bạn có thể kết nối Supabase hoặc tiếp tục dùng Local Storage.'}
                     </p>
                     {supabaseStatus?.configUrlMasked && (
                       <p className="text-[11px] font-mono text-neutral-400 mt-1 truncate">
@@ -1774,7 +1851,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleOpenCloudConfig}
+                    className="px-3 py-1.5 rounded-lg text-xs bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Cấu hình</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleTestSupabaseConnection}
@@ -1786,6 +1872,52 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                   </button>
                 </div>
               </div>
+
+              {/* Diagnostic Error Banner if Supabase connection failed */}
+              {supabaseStatus?.error && (
+                <div className="mt-3.5 p-3 rounded-xl bg-neutral-950/90 border border-amber-500/40 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-amber-300 flex items-center gap-1.5 text-xs">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                      <span>Chi tiết sự cố kết nối Đám mây:</span>
+                    </span>
+                    <span className="text-[10px] text-amber-400/80 font-mono bg-amber-500/10 px-2 py-0.5 rounded">
+                      Local Storage dự phòng: Hoạt động tốt
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-neutral-300 leading-relaxed font-mono bg-black/40 p-2 rounded border border-neutral-800/80 break-all text-amber-200/90">
+                    {supabaseStatus.error}
+                  </p>
+
+                  <div className="text-[11px] text-neutral-400 space-y-1 leading-relaxed">
+                    <p>
+                      💡 <strong>Nguyên nhân thường gặp:</strong> Trên gói Supabase Miễn phí, các dự án không hoạt động trong 7 ngày sẽ tự động chuyển sang trạng thái <strong>Tạm ngưng (Paused)</strong>. Khi đó máy chủ DNS của Supabase sẽ thu hồi tên miền, khiến kết nối báo lỗi <code>ENOTFOUND</code> / <code>fetch failed</code>.
+                    </p>
+                    <p>
+                      👉 <strong>Cách xử lý:</strong> Đăng nhập vào <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="text-amber-400 hover:underline">Supabase Dashboard</a> và bấm <strong>"Restore project"</strong> để đánh thức lại cơ sở dữ liệu, hoặc bấm nút <strong>"Cấu hình"</strong> ở trên để nhập dự án Supabase mới.
+                    </p>
+                  </div>
+
+                  <div className="pt-1 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDisconnectCloud}
+                      disabled={isSyncingCloud}
+                      className="px-3 py-1.5 rounded-lg text-xs bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition"
+                    >
+                      Dùng thuần Local Storage (Tắt cảnh báo đám mây)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleOpenCloudConfig}
+                      className="px-3 py-1.5 rounded-lg text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition"
+                    >
+                      Nhập thông tin kết nối mới
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Channels & Statuses Overview Cards */}
@@ -1872,26 +2004,30 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onBackToApp }) => {
                 <button
                   type="button"
                   onClick={handlePushToSupabase}
-                  disabled={isSyncingCloud}
-                  className="p-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-950/30 disabled:opacity-50 cursor-pointer text-left"
+                  disabled={!supabaseStatus?.connected || isSyncingCloud}
+                  className="p-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-950/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-left"
                 >
                   <Upload className={`w-4 h-4 ${isSyncingCloud ? 'animate-bounce' : ''}`} />
                   <div>
                     <div className="font-bold">Đẩy ngay {channels.length.toLocaleString('vi-VN')} kênh lên Supabase</div>
-                    <div className="text-[11px] text-emerald-200 font-normal">Lưu đè trạng thái Online/Offline hiện tại vào database</div>
+                    <div className="text-[11px] text-emerald-200 font-normal">
+                      {supabaseStatus?.connected ? 'Lưu đè trạng thái Online/Offline hiện tại vào database' : 'Yêu cầu kết nối Supabase thành công'}
+                    </div>
                   </div>
                 </button>
 
                 <button
                   type="button"
                   onClick={handlePullFromSupabase}
-                  disabled={isSyncingCloud}
-                  className="p-3 rounded-xl bg-neutral-800 hover:bg-neutral-750 text-neutral-200 font-semibold text-xs flex items-center justify-center gap-2 transition border border-neutral-700 disabled:opacity-50 cursor-pointer text-left"
+                  disabled={!supabaseStatus?.connected || isSyncingCloud}
+                  className="p-3 rounded-xl bg-neutral-800 hover:bg-neutral-750 text-neutral-200 font-semibold text-xs flex items-center justify-center gap-2 transition border border-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-left"
                 >
                   <Download className={`w-4 h-4 ${isSyncingCloud ? 'animate-bounce' : ''}`} />
                   <div>
                     <div className="font-bold">Tải dữ liệu từ Supabase về Local</div>
-                    <div className="text-[11px] text-neutral-400 font-normal">Cập nhật bộ nhớ đệm và sao lưu vào data/channels.json</div>
+                    <div className="text-[11px] text-neutral-400 font-normal">
+                      {supabaseStatus?.connected ? 'Cập nhật bộ nhớ đệm và sao lưu vào data/channels.json' : 'Yêu cầu kết nối Supabase thành công'}
+                    </div>
                   </div>
                 </button>
               </div>
@@ -2490,6 +2626,105 @@ CREATE INDEX IF NOT EXISTS idx_channels_playlist ON public.channels(playlist_id)
                 }}
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cloud Storage Configuration Modal */}
+      {isConfigCloudOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-sm font-bold text-white">Cấu Hình Kết Nối Supabase Cloud</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsConfigCloudOpen(false)}
+                className="text-neutral-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCloudConfig} className="p-5 space-y-4 text-xs">
+              <p className="text-neutral-300 leading-relaxed text-[11px]">
+                Bạn có thể cập nhật thông tin Supabase trực tiếp tại đây để lưu trữ vĩnh viễn danh sách kênh, hoặc bấm nút chuyển hẳn về Local Storage để tắt cảnh báo kết nối.
+              </p>
+
+              {/* Option 1: PostgreSQL Connection URI */}
+              <div className="space-y-1.5">
+                <label className="font-semibold text-neutral-300 block">
+                  1. PostgreSQL Connection URI (DATABASE_URL)
+                </label>
+                <input
+                  type="text"
+                  placeholder="postgresql://postgres.[ref]:[pass]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"
+                  value={cloudForm.databaseUrl}
+                  onChange={(e) => setCloudForm({ ...cloudForm, databaseUrl: e.target.value })}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-emerald-500"
+                />
+                <p className="text-[10px] text-neutral-500">Khuyên dùng Session Pooler port 6543 của Supabase.</p>
+              </div>
+
+              {/* Option 2: Supabase REST API */}
+              <div className="space-y-2 pt-2 border-t border-neutral-800/60">
+                <label className="font-semibold text-neutral-300 block">
+                  2. Hoặc kết nối qua Supabase REST API (HTTPS)
+                </label>
+                <div>
+                  <label className="text-[10px] text-neutral-400 block mb-1">SUPABASE_URL</label>
+                  <input
+                    type="text"
+                    placeholder="https://[project-ref].supabase.co"
+                    value={cloudForm.supabaseUrl}
+                    onChange={(e) => setCloudForm({ ...cloudForm, supabaseUrl: e.target.value })}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-neutral-400 block mb-1">SUPABASE_KEY (Service Role hoặc Anon Key)</label>
+                  <input
+                    type="password"
+                    placeholder="Nhập khóa mới nếu muốn thay đổi"
+                    value={cloudForm.supabaseKey}
+                    onChange={(e) => setCloudForm({ ...cloudForm, supabaseKey: e.target.value })}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-3 border-t border-neutral-800 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={handleDisconnectCloud}
+                  disabled={isSyncingCloud}
+                  className="px-3 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-xl text-xs transition"
+                >
+                  Dùng Local Storage
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsConfigCloudOpen(false)}
+                    className="px-3 py-2 text-neutral-400 hover:text-neutral-200 text-xs transition"
+                  >
+                    Đóng
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSyncingCloud}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+                  >
+                    {isSyncingCloud ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                    <span>Lưu &amp; Thử Kết Nối</span>
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

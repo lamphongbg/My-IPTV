@@ -10,6 +10,7 @@ import {
   bulkUpsertCloudPlaylists,
   bulkUpdateCloudChannelStatuses,
   getCloudStorageStatus,
+  getActiveProvider,
   getRecommendedSqlSchema,
   type CloudStorageStatus,
 } from './supabaseClient.js';
@@ -209,6 +210,10 @@ let pendingCloudUpdates: Array<CloudStatusUpdateItem> = [];
 let cloudFlushTimer: NodeJS.Timeout | null = null;
 
 export function queueCloudStatusUpdate(update: CloudStatusUpdateItem) {
+  // If cloud storage is not connected or in local fallback, do not queue
+  if (getActiveProvider() === 'local_fallback') {
+    return;
+  }
   pendingCloudUpdates.push(update);
   if (pendingCloudUpdates.length >= 60) {
     flushCloudStatusUpdates();
@@ -224,15 +229,18 @@ export async function flushCloudStatusUpdates(): Promise<void> {
     clearTimeout(cloudFlushTimer);
     cloudFlushTimer = null;
   }
-  if (pendingCloudUpdates.length === 0) return;
+  if (pendingCloudUpdates.length === 0 || getActiveProvider() === 'local_fallback') {
+    pendingCloudUpdates = [];
+    return;
+  }
 
   const batch = [...pendingCloudUpdates];
   pendingCloudUpdates = [];
 
   try {
     await bulkUpdateCloudChannelStatuses(batch);
-  } catch (err) {
-    console.error('[Storage] Error flushing status updates to Cloud:', err);
+  } catch (err: any) {
+    console.warn('[Storage] Status update to Cloud skipped:', err.message);
   }
 }
 
@@ -273,23 +281,23 @@ export async function initStorage(): Promise<void> {
         // Cloud database is connected but fresh/empty!
         // Automatically seed the local channels (with existing scan status) to Supabase
         console.log(`[Storage] Cloud database is empty. Auto-seeding ${channelsCache.length} channels with scan statuses to Cloud...`);
-        bulkUpsertCloudPlaylists(playlistsCache).catch(console.error);
+        bulkUpsertCloudPlaylists(playlistsCache).catch(console.warn);
         bulkUpsertCloudChannels(channelsCache).then((res) => {
           if (res.success) {
             console.log(`[Storage] Successfully seeded ${res.totalUploaded} channels and scan statuses to Cloud!`);
           }
-        }).catch(console.error);
+        }).catch(console.warn);
       }
     } else {
-      console.log('[Storage] Running in Local Storage Mode (data/channels.json). Add DATABASE_URL or SUPABASE_URL to persist to Cloud on Render.');
+      console.log('[Storage] Running in Local Storage Mode (data/channels.json). All channels and playlists active.');
     }
-  } catch (err) {
-    console.error('[Storage] Error during cloud storage bootstrap:', err);
+  } catch (err: any) {
+    console.warn('[Storage] Cloud database initialization failed, running in Local Storage Mode:', err.message);
   }
 }
 
 // Run bootstrap immediately
-initStorage().catch(console.error);
+initStorage().catch(console.warn);
 
 // -----------------------------------------------------------------------------
 // PLAYLIST OPERATIONS

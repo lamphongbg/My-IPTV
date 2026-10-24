@@ -1,3 +1,6 @@
+import dns from 'node:dns';
+import fs from 'node:fs';
+import path from 'node:path';
 import pg from 'pg';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Channel, Playlist, SubtitleTrackInfo } from '../types/iptv.js';
@@ -17,130 +20,261 @@ export interface CloudStorageStatus {
   configUrlMasked?: string;
 }
 
+export interface CloudStorageConfig {
+  enabled?: boolean;
+  databaseUrl?: string;
+  supabaseUrl?: string;
+  supabaseKey?: string;
+}
+
 // Global clients
 let pgPool: pg.Pool | null = null;
 let supabaseClient: SupabaseClient | null = null;
 let activeProvider: 'postgres_pool' | 'supabase_api' | 'local_fallback' = 'local_fallback';
 
-export function getCloudStorageConfig() {
-  const databaseUrl = process.env.DATABASE_URL?.trim();
-  const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL)?.trim();
-  const supabaseKey = (
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_KEY ||
-    process.env.VITE_SUPABASE_ANON_KEY ||
-    process.env.SUPABASE_ANON_KEY
-  )?.trim();
+const CONFIG_FILE = path.resolve(process.cwd(), 'data', 'cloud-config.json');
 
-  return { databaseUrl, supabaseUrl, supabaseKey };
+/**
+ * Load persisted custom config from data/cloud-config.json
+ */
+export function loadSavedCloudConfig(): CloudStorageConfig | null {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Save custom cloud storage config to data/cloud-config.json
+ */
+export function saveCloudStorageConfig(cfg: CloudStorageConfig): void {
+  try {
+    const dir = path.dirname(CONFIG_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf8');
+  } catch (err: any) {
+    console.warn('[CloudStorage] Failed to save cloud-config.json:', err.message);
+  }
+}
+
+/**
+ * Helper to safely extract a hostname from any URL or connection string
+ */
+function extractHostname(urlStr: string): string | null {
+  if (!urlStr) return null;
+  try {
+    const parsed = new URL(urlStr);
+    return parsed.hostname;
+  } catch {
+    const match = urlStr.match(/@([^:/]+)/);
+    return match ? match[1] : null;
+  }
+}
+
+/**
+ * Fast DNS pre-flight probe with timeout (prevents undici fetch throwing unhandled TypeError: fetch failed)
+ */
+async function canResolveHostname(hostname: string, timeoutMs: number = 3000): Promise<{ ok: boolean; error?: string }> {
+  if (!hostname) return { ok: false, error: 'Empty hostname' };
+  try {
+    const lookupPromise = dns.promises.lookup(hostname);
+    const timeoutPromise = new Promise<{ ok: boolean; error: string }>((_, reject) =>
+      setTimeout(() => reject(new Error('DNS lookup timeout')), timeoutMs)
+    );
+    await Promise.race([lookupPromise, timeoutPromise]);
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err.code || err.message };
+  }
+}
+
+export function getCloudStorageConfig() {
+  const saved = loadSavedCloudConfig();
+
+  const enabled = saved?.enabled !== false;
+  const databaseUrl = (saved?.databaseUrl !== undefined ? saved.databaseUrl : process.env.DATABASE_URL)?.trim() || undefined;
+  const supabaseUrl = (saved?.supabaseUrl !== undefined ? saved.supabaseUrl : (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL))?.trim() || undefined;
+  const supabaseKey = (
+    saved?.supabaseKey !== undefined
+      ? saved.supabaseKey
+      : (
+          process.env.SUPABASE_SERVICE_ROLE_KEY ||
+          process.env.SUPABASE_KEY ||
+          process.env.VITE_SUPABASE_ANON_KEY ||
+          process.env.SUPABASE_ANON_KEY
+        )
+  )?.trim() || undefined;
+
+  return { enabled, databaseUrl, supabaseUrl, supabaseKey };
 }
 
 /**
  * Initialize cloud database connection (PostgreSQL direct / Supabase Pooler OR Supabase REST Client)
+ * Includes pre-flight DNS verification to prevent fetch failed crashes on paused or deleted Supabase projects.
  */
 export async function initCloudDatabase(): Promise<CloudStorageStatus> {
-  const { databaseUrl, supabaseUrl, supabaseKey } = getCloudStorageConfig();
+  const { enabled, databaseUrl, supabaseUrl, supabaseKey } = getCloudStorageConfig();
+
+  // If cloud storage is explicitly disabled or no credentials provided
+  if (!enabled) {
+    if (pgPool) {
+      pgPool.end().catch(() => {});
+      pgPool = null;
+    }
+    supabaseClient = null;
+    activeProvider = 'local_fallback';
+    lastStatus = {
+      enabled: false,
+      provider: 'local_fallback',
+      connected: false,
+      channelCount: 0,
+      playlistCount: 0,
+      error: undefined,
+    };
+    return lastStatus;
+  }
+
+  let connectionError: string | undefined;
 
   // 1. Try PostgreSQL Connection String (Supported by Supabase Direct & Transaction/Session Pooler)
   if (databaseUrl) {
-    try {
-      if (!pgPool) {
-        pgPool = new Pool({
-          connectionString: databaseUrl,
-          ssl: { rejectUnauthorized: false },
-          max: 20,
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 10000,
-        });
+    const dbHost = extractHostname(databaseUrl);
+    let dbHostResolves = true;
+
+    if (dbHost) {
+      const dnsCheck = await canResolveHostname(dbHost);
+      if (!dnsCheck.ok) {
+        dbHostResolves = false;
+        connectionError = `Host PostgreSQL "${dbHost}" không tìm thấy (DNS ${dnsCheck.error}). Dự án có thể đã bị tạm ngưng trên Supabase.`;
+        console.warn(`[CloudStorage] PostgreSQL host "${dbHost}" cannot be resolved (${dnsCheck.error}). Trying Supabase REST fallback.`);
       }
+    }
 
-      const startTime = Date.now();
-      const testRes = await pgPool.query('SELECT NOW()');
-      const pingMs = Date.now() - startTime;
+    if (dbHostResolves) {
+      try {
+        if (!pgPool) {
+          pgPool = new Pool({
+            connectionString: databaseUrl,
+            ssl: { rejectUnauthorized: false },
+            max: 20,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 5000,
+          });
+        }
 
-      activeProvider = 'postgres_pool';
-      console.log(`[CloudStorage] Connected to PostgreSQL/Supabase Pool in ${pingMs}ms`);
+        const startTime = Date.now();
+        await pgPool.query('SELECT NOW()');
+        const pingMs = Date.now() - startTime;
 
-      // Ensure tables & indexes exist
-      await initPostgresSchema(pgPool);
+        activeProvider = 'postgres_pool';
+        console.log(`[CloudStorage] Connected to PostgreSQL/Supabase Pool in ${pingMs}ms`);
 
-      const [pCountRes, cCountRes, onlineRes, offlineRes] = await Promise.all([
-        pgPool.query('SELECT COUNT(*)::int as count FROM playlists'),
-        pgPool.query('SELECT COUNT(*)::int as count FROM channels'),
-        pgPool.query("SELECT COUNT(*)::int as count FROM channels WHERE status != 'offline'"),
-        pgPool.query("SELECT COUNT(*)::int as count FROM channels WHERE status = 'offline'"),
-      ]);
+        // Ensure tables & indexes exist
+        await initPostgresSchema(pgPool);
 
-      const playlistCount = pCountRes.rows[0]?.count || 0;
-      const channelCount = cCountRes.rows[0]?.count || 0;
-      const onlineCount = onlineRes.rows[0]?.count || 0;
-      const offlineCount = offlineRes.rows[0]?.count || 0;
+        const [pCountRes, cCountRes, onlineRes, offlineRes] = await Promise.all([
+          pgPool.query('SELECT COUNT(*)::int as count FROM playlists'),
+          pgPool.query('SELECT COUNT(*)::int as count FROM channels'),
+          pgPool.query("SELECT COUNT(*)::int as count FROM channels WHERE status != 'offline'"),
+          pgPool.query("SELECT COUNT(*)::int as count FROM channels WHERE status = 'offline'"),
+        ]);
 
-      // Mask URL for display
-      const masked = databaseUrl.replace(/:([^:@]+)@/, ':***@');
+        const playlistCount = pCountRes.rows[0]?.count || 0;
+        const channelCount = cCountRes.rows[0]?.count || 0;
+        const onlineCount = onlineRes.rows[0]?.count || 0;
+        const offlineCount = offlineRes.rows[0]?.count || 0;
 
-      lastStatus = {
-        enabled: true,
-        provider: 'postgres_pool',
-        connected: true,
-        channelCount,
-        onlineCount,
-        offlineCount,
-        playlistCount,
-        pingMs,
-        configUrlMasked: masked,
-      };
-      return lastStatus;
-    } catch (err: any) {
-      console.error('[CloudStorage] PostgreSQL connection failed, trying Supabase REST fallback:', err.message);
-      pgPool = null;
+        // Mask URL for display
+        const masked = databaseUrl.replace(/:([^:@]+)@/, ':***@');
+
+        lastStatus = {
+          enabled: true,
+          provider: 'postgres_pool',
+          connected: true,
+          channelCount,
+          onlineCount,
+          offlineCount,
+          playlistCount,
+          pingMs,
+          configUrlMasked: masked,
+        };
+        return lastStatus;
+      } catch (err: any) {
+        connectionError = err.message || 'Lỗi kết nối PostgreSQL';
+        console.warn('[CloudStorage] PostgreSQL connection attempt failed, trying Supabase REST fallback:', err.message);
+        if (pgPool) {
+          pgPool.end().catch(() => {});
+          pgPool = null;
+        }
+      }
     }
   }
 
-  // 2. Try Supabase REST Client (HTTPS port 443 - works everywhere without connection pool issues)
+  // 2. Try Supabase REST Client (HTTPS port 443)
   if (supabaseUrl && supabaseKey) {
-    try {
-      if (!supabaseClient) {
-        supabaseClient = createClient(supabaseUrl, supabaseKey, {
-          auth: { persistSession: false },
-        });
+    const sbHost = extractHostname(supabaseUrl);
+    let sbHostResolves = true;
+
+    if (sbHost) {
+      const dnsCheck = await canResolveHostname(sbHost);
+      if (!dnsCheck.ok) {
+        sbHostResolves = false;
+        connectionError = `Host Supabase "${sbHost}" không phân giải được (DNS ${dnsCheck.error}). Dự án Supabase có thể đang ở trạng thái Tạm ngưng (Paused) hoặc bị xóa. Ứng dụng tự động chuyển sang chế độ Local Storage.`;
+        console.warn(`[CloudStorage] Supabase REST host "${sbHost}" cannot be resolved (${dnsCheck.error}). Falling back cleanly to Local Storage.`);
       }
+    }
 
-      const startTime = Date.now();
-      const [pRes, cRes, onlineRes, offlineRes] = await Promise.all([
-        supabaseClient.from('playlists').select('*', { count: 'exact', head: true }),
-        supabaseClient.from('channels').select('*', { count: 'exact', head: true }),
-        supabaseClient.from('channels').select('*', { count: 'exact', head: true }).neq('status', 'offline'),
-        supabaseClient.from('channels').select('*', { count: 'exact', head: true }).eq('status', 'offline'),
-      ]);
+    if (sbHostResolves) {
+      try {
+        if (!supabaseClient) {
+          supabaseClient = createClient(supabaseUrl, supabaseKey, {
+            auth: { persistSession: false },
+          });
+        }
 
-      if (pRes.error && pRes.error.code !== 'PGRST116') {
-        throw new Error(pRes.error.message);
+        const startTime = Date.now();
+        const [pRes, cRes, onlineRes, offlineRes] = await Promise.all([
+          supabaseClient.from('playlists').select('*', { count: 'exact', head: true }),
+          supabaseClient.from('channels').select('*', { count: 'exact', head: true }),
+          supabaseClient.from('channels').select('*', { count: 'exact', head: true }).neq('status', 'offline'),
+          supabaseClient.from('channels').select('*', { count: 'exact', head: true }).eq('status', 'offline'),
+        ]);
+
+        if (pRes.error && pRes.error.code !== 'PGRST116') {
+          throw new Error(pRes.error.message);
+        }
+        if (cRes.error && cRes.error.code !== 'PGRST116') {
+          throw new Error(cRes.error.message);
+        }
+
+        const pingMs = Date.now() - startTime;
+        activeProvider = 'supabase_api';
+        console.log(`[CloudStorage] Connected to Supabase REST API in ${pingMs}ms`);
+
+        const status: CloudStorageStatus = {
+          enabled: true,
+          provider: 'supabase_api',
+          connected: true,
+          channelCount: cRes.count || 0,
+          onlineCount: onlineRes.count ?? (cRes.count || 0),
+          offlineCount: offlineRes.count ?? 0,
+          playlistCount: pRes.count || 0,
+          pingMs,
+          configUrlMasked: supabaseUrl,
+        };
+        lastStatus = status;
+        return status;
+      } catch (err: any) {
+        const rawMsg = err?.cause?.message || err?.message || String(err);
+        connectionError = `Lỗi kết nối Supabase REST: ${rawMsg}`;
+        console.warn('[CloudStorage] Supabase REST connection failed, falling back to Local Storage:', rawMsg);
+        supabaseClient = null;
       }
-      if (cRes.error && cRes.error.code !== 'PGRST116') {
-        throw new Error(cRes.error.message);
-      }
-
-      const pingMs = Date.now() - startTime;
-      activeProvider = 'supabase_api';
-      console.log(`[CloudStorage] Connected to Supabase REST API in ${pingMs}ms`);
-
-      const status: CloudStorageStatus = {
-        enabled: true,
-        provider: 'supabase_api',
-        connected: true,
-        channelCount: cRes.count || 0,
-        onlineCount: onlineRes.count ?? (cRes.count || 0),
-        offlineCount: offlineRes.count ?? 0,
-        playlistCount: pRes.count || 0,
-        pingMs,
-        configUrlMasked: supabaseUrl,
-      };
-      lastStatus = status;
-      return status;
-    } catch (err: any) {
-      console.error('[CloudStorage] Supabase REST connection failed:', err.message);
-      supabaseClient = null;
     }
   }
 
@@ -151,6 +285,8 @@ export async function initCloudDatabase(): Promise<CloudStorageStatus> {
     connected: false,
     channelCount: 0,
     playlistCount: 0,
+    error: connectionError,
+    configUrlMasked: supabaseUrl || (databaseUrl ? databaseUrl.replace(/:([^:@]+)@/, ':***@') : undefined),
   };
   return lastStatus;
 }

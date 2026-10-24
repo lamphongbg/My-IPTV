@@ -15,6 +15,8 @@ import {
   X,
   Play,
   Type,
+  Search,
+  AlertTriangle,
   Radio,
   Sliders,
 } from 'lucide-react';
@@ -36,6 +38,9 @@ interface SubtitleMenuProps {
   selectedTrackId: number;
   onSelectTrack: (trackId: number) => void;
   onTriggerSampleCue: (sampleText: string) => void;
+  channelHasSubtitles?: boolean;
+  channelName?: string;
+  onOpenDiagnostic?: () => void;
 }
 
 const TARGET_LANGUAGES = [
@@ -66,6 +71,9 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
   selectedTrackId,
   onSelectTrack,
   onTriggerSampleCue,
+  channelHasSubtitles,
+  channelName,
+  onOpenDiagnostic,
 }) => {
   if (!isOpen) return null;
 
@@ -90,15 +98,56 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
             <p className="text-[10px] text-neutral-400">Tự động bắt phụ đề HLS và dịch tức thì</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-neutral-400 hover:text-white p-1 rounded-md hover:bg-neutral-800 transition"
-          title="Đóng"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {onOpenDiagnostic && (
+            <button
+              type="button"
+              onClick={onOpenDiagnostic}
+              className="text-amber-400 hover:text-amber-300 p-1.5 rounded-lg hover:bg-neutral-800 transition flex items-center gap-1 text-[11px] font-semibold cursor-pointer"
+              title="Mở Công Cụ Chẩn Đoán Phụ Đề HLS"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Chẩn đoán</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-neutral-400 hover:text-white p-1 rounded-md hover:bg-neutral-800 transition cursor-pointer"
+            title="Đóng"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
+
+      {/* Warning Banner if stream source lacks subtitle tags */}
+      {channelHasSubtitles === false && (
+        <div className="bg-amber-950/40 border border-amber-600/40 rounded-xl p-2.5 text-xs mb-3 text-amber-200">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-[11px] text-amber-300">
+                Cảnh báo: Nguồn phát thiếu thẻ phụ đề
+              </div>
+              <p className="text-[10px] text-neutral-300 mt-0.5 leading-relaxed">
+                Nguồn HLS của kênh này không khai báo thẻ <code>#EXT-X-MEDIA:TYPE=SUBTITLES</code>. 
+                Bạn vẫn có thể dùng tính năng Bắt thoại tự động & Dịch AI hoặc chạy kiểm tra sâu.
+              </p>
+              {onOpenDiagnostic && (
+                <button
+                  type="button"
+                  onClick={onOpenDiagnostic}
+                  className="mt-2 px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <Search className="w-3 h-3 text-amber-400" />
+                  <span>Chạy Subtitle Diagnostic Tool</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Enable/Disable Toggle */}
       <div className="bg-neutral-900/90 rounded-xl p-2.5 border border-neutral-800/80 mb-3 flex items-center justify-between">

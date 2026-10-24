@@ -23,7 +23,9 @@ import {
   Sliders,
   Check,
   Subtitles,
-  Sparkles
+  Sparkles,
+  Search,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   SubtitleEngine,
@@ -36,6 +38,7 @@ import {
 } from '../services/subtitleTranslator';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import { SubtitleMenu } from './SubtitleMenu';
+import { SubtitleDiagnosticModal } from './SubtitleDiagnosticModal';
 
 export type AspectRatioMode = 'contain' | 'cover' | 'fill' | '16:9' | '4:3' | '21:9';
 
@@ -127,6 +130,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [autoplayMuted, setAutoplayMuted] = useState<boolean>(false);
   const [feedbackIcon, setFeedbackIcon] = useState<'play' | 'pause' | null>(null);
   const [isVlcModalOpen, setIsVlcModalOpen] = useState<boolean>(false);
+  const [isDiagnosticModalOpen, setIsDiagnosticModalOpen] = useState<boolean>(false);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Resolution selection states
@@ -1512,6 +1516,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-950/80 text-sky-300 border border-sky-700/60 font-mono">
                   {activeResolutionLabel}
                 </span>
+                {/* Subtitle status badge in Fullscreen */}
+                {channel.has_subtitles ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsDiagnosticModalOpen(true);
+                    }}
+                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-600/50 hover:bg-cyan-900/60 transition flex items-center gap-1 cursor-pointer"
+                    title="Kênh có phụ đề. Bấm để chẩn đoán chi tiết HLS Subtitles"
+                  >
+                    <Subtitles className="w-3 h-3 text-cyan-400" />
+                    <span>Có CC</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsDiagnosticModalOpen(true);
+                    }}
+                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-600/50 hover:bg-amber-900/60 transition flex items-center gap-1 cursor-pointer"
+                    title="Cảnh báo: Nguồn phát thiếu thẻ phụ đề trong HLS Manifest. Bấm để chẩn đoán chi tiết"
+                  >
+                    <AlertTriangle className="w-3 h-3 text-amber-400" />
+                    <span>Thiếu thẻ CC</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1823,6 +1855,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <ShieldCheck className="w-3 h-3" />
                   Proxy CORS Bật
                 </span>
+              )}
+              {/* Subtitle tag status & diagnostic button */}
+              {channel.has_subtitles ? (
+                <button
+                  type="button"
+                  onClick={() => setIsDiagnosticModalOpen(true)}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/20 flex items-center gap-1 transition cursor-pointer"
+                  title="Kênh có phụ đề. Bấm để chẩn đoán chi tiết HLS Subtitles"
+                >
+                  <Subtitles className="w-3 h-3 text-cyan-400" />
+                  <span>Có CC</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsDiagnosticModalOpen(true)}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 flex items-center gap-1 transition cursor-pointer"
+                  title="Cảnh báo: Nguồn phát không khai báo thẻ phụ đề (EXT-X-MEDIA:TYPE=SUBTITLES). Bấm để kiểm tra chi tiết"
+                >
+                  <AlertTriangle className="w-3 h-3 text-amber-400" />
+                  <span>Thiếu thẻ CC</span>
+                </button>
               )}
             </div>
             <p className="text-[11px] text-neutral-400 mt-0.5">
@@ -2201,12 +2255,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               tracks={subtitleTracks}
               selectedTrackId={selectedSubtitleTrackId}
               onSelectTrack={handleSelectSubtitleTrack}
+              channelHasSubtitles={channel?.has_subtitles}
+              channelName={channel?.name}
+              onOpenDiagnostic={() => {
+                setIsSubtitleMenuOpen(false);
+                setIsDiagnosticModalOpen(true);
+              }}
               onTriggerSampleCue={(sampleText) => {
                 if (!subtitlesEnabled) setSubtitlesEnabled(true);
                 handleProcessCueText(sampleText);
               }}
             />
           </div>
+
+          {/* Subtitle Diagnostic Tool Button */}
+          <button
+            type="button"
+            onClick={() => setIsDiagnosticModalOpen(true)}
+            className="px-2 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-amber-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-neutral-700 transition cursor-pointer"
+            title="Chẩn đoán chuyên sâu thẻ phụ đề HLS (#EXT-X-MEDIA:TYPE=SUBTITLES)"
+          >
+            <Search className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden xl:inline">Chẩn đoán CC</span>
+          </button>
 
           <button
             type="button"
@@ -2293,6 +2364,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         channel={channel}
         isOpen={isVlcModalOpen}
         onClose={() => setIsVlcModalOpen(false)}
+      />
+
+      {/* Subtitle Diagnostic Tool Modal */}
+      <SubtitleDiagnosticModal
+        channel={channel}
+        isOpen={isDiagnosticModalOpen}
+        onClose={() => setIsDiagnosticModalOpen(false)}
+        onApplyTracksToChannel={(updatedTracks) => {
+          if (channel) {
+            channel.has_subtitles = updatedTracks.length > 0;
+            channel.subtitle_tracks = updatedTracks;
+            if (onChannelUpdate) {
+              onChannelUpdate(channel);
+            }
+          }
+        }}
       />
     </div>
   );

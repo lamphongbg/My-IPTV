@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Channel } from '../types/iptv';
 import { isNokiaLightweightBrowser, getVlcLaunchUrl, launchVlcPlayer } from '../utils/deviceHelper';
-import { X, Copy, Check, ExternalLink, Play, Tv, ShieldCheck, Smartphone, Download, ChevronRight, Sliders, Zap, Subtitles } from 'lucide-react';
+import { X, Copy, Check, ExternalLink, Play, Tv, ShieldCheck, Smartphone, Download, ChevronRight, Sliders, Zap, Subtitles, Search, AlertTriangle } from 'lucide-react';
+import { SubtitleDiagnosticModal } from './SubtitleDiagnosticModal';
 
 interface ChannelDetailsModalProps {
   channel: Channel | null;
@@ -20,6 +21,7 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
   const [copied, setCopied] = useState<boolean>(false);
   const [showNokiaGuide, setShowNokiaGuide] = useState<boolean>(isNokia);
   const [urlMode, setUrlMode] = useState<'original' | 'e72'>('original');
+  const [isDiagnosticOpen, setIsDiagnosticOpen] = useState<boolean>(false);
 
   if (!channel) return null;
 
@@ -298,7 +300,69 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
                 </div>
                 <ExternalLink className="w-3.5 h-3.5 opacity-70" />
               </a>
+
+              {/* Subtitle Deep Diagnostic Action Button */}
+              <button
+                type="button"
+                onClick={() => setIsDiagnosticOpen(true)}
+                className="col-span-2 p-2.5 bg-cyan-950/40 hover:bg-cyan-900/50 border border-cyan-800/50 text-cyan-200 rounded-lg font-medium flex items-center justify-between transition text-left"
+                title="Quét cấu trúc HLS Manifest (.m3u8), kiểm tra thẻ EXT-X-MEDIA:TYPE=SUBTITLES và WebVTT"
+              >
+                <div className="flex items-center gap-2">
+                  <Search className="w-4 h-4 text-cyan-400" />
+                  <div>
+                    <span className="font-semibold">Chẩn đoán phụ đề HLS (Deep Scan)</span>
+                    <div className="text-[10px] text-cyan-300/80 font-normal">
+                      Phân tích thẻ EXT-X-MEDIA, sub-playlist WebVTT &amp; CEA-608
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-cyan-400 opacity-70" />
+              </button>
             </div>
+          </div>
+
+          {/* Subtitle Status & Warning Card */}
+          <div className={`p-3.5 rounded-xl border ${
+            hasSubtitles
+              ? 'bg-cyan-950/20 border-cyan-800/40'
+              : 'bg-amber-950/25 border-amber-800/40'
+          } space-y-2`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {hasSubtitles ? (
+                  <Subtitles className="w-4 h-4 text-cyan-400" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                )}
+                <span className={`text-xs font-semibold ${hasSubtitles ? 'text-cyan-300' : 'text-amber-300'}`}>
+                  {hasSubtitles ? 'TRẠNG THÁI PHỤ ĐỀ HLS' : 'CẢNH BÁO PHỤ ĐỀ (SUBTITLE WARNING)'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDiagnosticOpen(true)}
+                className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 transition"
+              >
+                <Search className="w-3 h-3" />
+                <span>Quét chi tiết</span>
+              </button>
+            </div>
+
+            {hasSubtitles ? (
+              <p className="text-[11px] text-neutral-300 leading-relaxed">
+                Kênh có khai báo phụ đề. Nếu trình duyệt không hiển thị phụ đề, hãy dùng công cụ chẩn đoán để kiểm tra sub-playlist WebVTT và phân tích cú pháp manifest.
+              </p>
+            ) : (
+              <div className="text-[11px] text-amber-200/90 leading-relaxed space-y-1">
+                <p>
+                  ⚠️ <strong>Luồng phát chưa khai báo thẻ phụ đề chuẩn HLS:</strong> Trình duyệt sẽ không thể hiển thị phụ đề tự động nếu nguồn phát không có thẻ <code className="text-amber-300 bg-black/40 px-1 py-0.5 rounded font-mono">#EXT-X-MEDIA:TYPE=SUBTITLES</code> hoặc đóng phụ đề nhúng CEA-608 không tương thích.
+                </p>
+                <p className="text-[10px] text-neutral-400">
+                  Nhấn <strong>"Quét chi tiết"</strong> bên trên để chạy công cụ Subtitle Diagnostic kiểm tra toàn diện manifest và tải thử phân đoạn WebVTT.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* CorePlayer on Nokia E72 Tutorial / Toggle */}
@@ -376,7 +440,10 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
                     </span>
                   </span>
                 ) : (
-                  <span className="text-neutral-500">Chưa ghi nhận phụ đề</span>
+                  <span className="inline-flex items-center gap-1 text-amber-400/90">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Chưa phát hiện thẻ phụ đề HLS</span>
+                  </span>
                 )}
               </div>
               <div className="col-span-2">
@@ -415,6 +482,22 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Deep Subtitle Diagnostic Modal */}
+      {isDiagnosticOpen && (
+        <SubtitleDiagnosticModal
+          isOpen={isDiagnosticOpen}
+          onClose={() => setIsDiagnosticOpen(false)}
+          channel={channel}
+          initialStreamUrl={channel.stream_url}
+          onApplyTracksToChannel={(tracks) => {
+            if (channel) {
+              channel.subtitle_tracks = tracks;
+              channel.has_subtitles = tracks.length > 0;
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

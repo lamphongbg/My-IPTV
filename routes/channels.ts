@@ -15,6 +15,7 @@ import {
   getScanProgress,
   scanSingleChannel,
 } from '../src/services/channelScanner.js';
+import { runSubtitleDeepDiagnostic } from '../src/services/subtitleDiagnostic.js';
 
 const router = Router();
 
@@ -290,6 +291,52 @@ router.post('/api/channels/:id/scan', async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Deep Subtitle Diagnostic for a specific channel or stream URL
+router.post('/api/channels/diagnose-subtitles', async (req: Request, res: Response) => {
+  try {
+    const { streamUrl, channelId } = req.body;
+    let targetUrl = streamUrl;
+    let targetName: string | undefined = undefined;
+
+    if (channelId) {
+      const channel = await getChannelFromDb(channelId);
+      if (channel) {
+        targetUrl = targetUrl || channel.stream_url;
+        targetName = channel.name;
+      }
+    }
+
+    if (!targetUrl || typeof targetUrl !== 'string') {
+      return res.status(400).json({ error: 'Thiếu tham số streamUrl hoặc channelId hợp lệ.' });
+    }
+
+    const report = await runSubtitleDeepDiagnostic(targetUrl.trim(), {
+      channelId,
+      channelName: targetName,
+    });
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Lỗi chẩn đoán phụ đề' });
+  }
+});
+
+router.get('/api/channels/:id/diagnose-subtitles', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const channel = await getChannelFromDb(id);
+    if (!channel) {
+      return res.status(404).json({ error: 'Không tìm thấy kênh.' });
+    }
+    const report = await runSubtitleDeepDiagnostic(channel.stream_url, {
+      channelId: channel.id,
+      channelName: channel.name,
+    });
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Lỗi chẩn đoán phụ đề' });
   }
 });
 

@@ -433,9 +433,50 @@ router.post('/api/admin/supabase/pull', async (_req: Request, res: Response) => 
   }
 });
 
-router.get('/api/admin/supabase/schema', (_req: Request, res: Response) => {
-  const schema = getRecommendedSqlSchema();
-  res.type('text/plain').send(schema);
+router.get('/api/admin/supabase/config', async (_req: Request, res: Response) => {
+  try {
+    const { getCloudStorageConfig } = await import('../src/db/supabaseClient.js');
+    const cfg = getCloudStorageConfig();
+    res.json({
+      enabled: cfg.enabled,
+      hasDatabaseUrl: Boolean(cfg.databaseUrl),
+      databaseUrlMasked: cfg.databaseUrl ? cfg.databaseUrl.replace(/:([^:@]+)@/, ':***@') : undefined,
+      supabaseUrl: cfg.supabaseUrl,
+      hasSupabaseKey: Boolean(cfg.supabaseKey),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/api/admin/supabase/config', async (req: Request, res: Response) => {
+  try {
+    const { saveCloudStorageConfig, initCloudDatabase } = await import('../src/db/supabaseClient.js');
+    const { enabled, databaseUrl, supabaseUrl, supabaseKey } = req.body || {};
+
+    saveCloudStorageConfig({
+      enabled: enabled !== false,
+      databaseUrl: databaseUrl !== undefined ? String(databaseUrl).trim() : undefined,
+      supabaseUrl: supabaseUrl !== undefined ? String(supabaseUrl).trim() : undefined,
+      supabaseKey: supabaseKey !== undefined ? String(supabaseKey).trim() : undefined,
+    });
+
+    const status = await initCloudDatabase();
+    res.json({ success: true, status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/api/admin/supabase/disconnect', async (_req: Request, res: Response) => {
+  try {
+    const { saveCloudStorageConfig, initCloudDatabase } = await import('../src/db/supabaseClient.js');
+    saveCloudStorageConfig({ enabled: false });
+    const status = await initCloudDatabase();
+    res.json({ success: true, status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;
