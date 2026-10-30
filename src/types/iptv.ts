@@ -23,7 +23,9 @@ export interface Channel {
   video_codec?: string;
   audio_codec?: string;
   resolution?: string;
-  status?: 'active' | 'check' | 'offline';
+  status?: 'active' | 'check' | 'offline' | 'reported';
+  is_reported?: boolean;
+  reported_at?: string;
   description?: string;
   has_subtitles?: boolean;
   subtitle_tracks?: SubtitleTrackInfo[];

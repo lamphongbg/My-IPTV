@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Channel } from '../types/iptv';
 import { isNokiaLightweightBrowser, getVlcLaunchUrl, launchVlcPlayer } from '../utils/deviceHelper';
-import { X, Copy, Check, ExternalLink, Play, Tv, ShieldCheck, Smartphone, Download, ChevronRight, Sliders, Zap, Subtitles, Search, AlertTriangle } from 'lucide-react';
+import { X, Copy, Check, ExternalLink, Play, Tv, ShieldCheck, Smartphone, Download, ChevronRight, Sliders, Zap, Subtitles, Search, AlertTriangle, CheckCircle, RefreshCw, Flag } from 'lucide-react';
 import { SubtitleDiagnosticModal } from './SubtitleDiagnosticModal';
 
 interface ChannelDetailsModalProps {
@@ -9,6 +9,8 @@ interface ChannelDetailsModalProps {
   onClose: () => void;
   onPlayChannel: (channel: Channel) => void;
   isNokiaLightweight?: boolean;
+  onChannelUpdate?: (channel: Channel) => void;
+  isAdmin?: boolean;
 }
 
 export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
@@ -16,12 +18,72 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
   onClose,
   onPlayChannel,
   isNokiaLightweight,
+  onChannelUpdate,
+  isAdmin,
 }) => {
   const isNokia = isNokiaLightweight ?? isNokiaLightweightBrowser();
   const [copied, setCopied] = useState<boolean>(false);
   const [showNokiaGuide, setShowNokiaGuide] = useState<boolean>(isNokia);
   const [urlMode, setUrlMode] = useState<'original' | 'e72'>('original');
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState<boolean>(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
+  const [isReporting, setIsReporting] = useState<boolean>(false);
+
+  const effectiveIsAdmin = isAdmin !== undefined ? isAdmin : (typeof window !== 'undefined' && Boolean(localStorage.getItem('my_iptv_admin_token')));
+  const isReported = Boolean(channel?.status === 'reported' || channel?.is_reported);
+
+  const handleToggleChannelStatus = async () => {
+    if (!channel || isUpdatingStatus) return;
+    const isCurrentlyOffline = channel.status === 'offline';
+    const targetStatus = isCurrentlyOffline ? 'active' : 'offline';
+    setIsUpdatingStatus(true);
+    try {
+      const res = await fetch(`/api/channels/${channel.id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: targetStatus }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const updated = data.channel || { ...channel, status: targetStatus };
+        if (onChannelUpdate) {
+          onChannelUpdate(updated);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handleReportUnavailable = async () => {
+    if (!channel || isReporting || isReported) return;
+    setIsReporting(true);
+    try {
+      const res = await fetch(`/api/channels/${channel.id}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Người dùng báo cáo không khả dụng' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const updated = data.channel || {
+          ...channel,
+          status: 'reported' as const,
+          is_reported: true,
+          description: 'Đã báo cáo không khả dụng',
+        };
+        if (onChannelUpdate) {
+          onChannelUpdate(updated);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsReporting(false);
+    }
+  };
 
   if (!channel) return null;
 
@@ -446,8 +508,74 @@ export const ChannelDetailsModal: React.FC<ChannelDetailsModalProps> = ({
                   </span>
                 )}
               </div>
-              <div className="col-span-2">
-                Trạng thái: <span className="inline-flex items-center gap-1 text-emerald-400"><ShieldCheck className="w-3.5 h-3.5" /> Hoạt động</span>
+              <div className="col-span-2 flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-neutral-850">
+                <div className="flex items-center gap-2">
+                  <span>Trạng thái:</span>
+                  {isReported ? (
+                    <span className="inline-flex items-center gap-1 text-amber-400 font-bold">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      Bị báo cáo không khả dụng
+                    </span>
+                  ) : channel.status === 'offline' ? (
+                    <span className="inline-flex items-center gap-1 text-rose-400 font-bold">
+                      <span className="w-2 h-2 rounded-full bg-rose-400" />
+                      Không hoạt động (Offline)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      Khả dụng (Online)
+                    </span>
+                  )}
+                </div>
+
+                {effectiveIsAdmin ? (
+                  <button
+                    type="button"
+                    onClick={handleToggleChannelStatus}
+                    disabled={isUpdatingStatus}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1.5 border transition cursor-pointer active:scale-95 disabled:opacity-50 ${
+                      channel.status === 'offline'
+                        ? 'bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 border-emerald-700/60'
+                        : 'bg-rose-950/60 hover:bg-rose-900 text-rose-300 border-rose-800/60'
+                    }`}
+                    title={
+                      channel.status === 'offline'
+                        ? 'Nhấn để chuyển sang trạng thái Hoạt động'
+                        : 'Nhấn để đánh dấu kênh này Không hoạt động'
+                    }
+                  >
+                    {isUpdatingStatus ? (
+                      <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                    ) : channel.status === 'offline' ? (
+                      <CheckCircle className="w-3 h-3 text-emerald-400" />
+                    ) : (
+                      <AlertTriangle className="w-3 h-3 text-rose-400" />
+                    )}
+                    <span>{channel.status === 'offline' ? 'Đánh dấu hoạt động lại' : 'Đánh dấu không hoạt động'}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleReportUnavailable}
+                    disabled={isReporting || isReported}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1.5 border transition cursor-pointer active:scale-95 disabled:opacity-80 ${
+                      isReported
+                        ? 'bg-amber-950/60 text-amber-300 border-amber-600/70 shadow-sm cursor-default'
+                        : 'bg-amber-500 hover:bg-amber-400 text-neutral-950 border-amber-400 font-bold'
+                    }`}
+                    title={isReported ? 'Bạn đã báo cáo kênh này' : 'Báo cáo kênh này không khả dụng'}
+                  >
+                    {isReporting ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : isReported ? (
+                      <Check className="w-3 h-3 text-amber-400" />
+                    ) : (
+                      <Flag className="w-3 h-3" />
+                    )}
+                    <span>{isReported ? 'Đã báo cáo không khả dụng' : 'Báo cáo kênh không khả dụng'}</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -30,6 +30,7 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
 }) => {
   const isNokia = isNokiaLightweight ?? isNokiaLightweightBrowser();
   const isOffline = channel.status === 'offline';
+  const isReported = channel.status === 'reported' || Boolean(channel.is_reported);
 
   const hasSubtitles = Boolean(
     channel.has_subtitles || (channel.subtitle_tracks && channel.subtitle_tracks.length > 0)
@@ -63,7 +64,9 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
       onClick={() => onSelect(channel)}
       className={`group relative p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
         isActive
-          ? 'bg-amber-950/20 border-amber-500/60 shadow-lg shadow-amber-950/20 ring-1 ring-amber-500/30'
+          ? 'bg-amber-950/30 border-amber-500 shadow-lg shadow-amber-950/30 ring-2 ring-amber-500/50'
+          : isReported
+          ? 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/70 hover:border-amber-400 shadow-md shadow-amber-950/20'
           : isOffline
           ? 'bg-rose-950/15 hover:bg-rose-950/25 border-rose-900/50 hover:border-rose-800'
           : 'bg-neutral-900/80 hover:bg-neutral-850 border-neutral-800 hover:border-neutral-700'
@@ -76,7 +79,7 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
             <img
               src={channel.logo}
               alt={channel.name}
-              className={`w-full h-full object-contain ${isOffline ? 'opacity-60 grayscale' : ''}`}
+              className={`w-full h-full object-contain ${isOffline ? 'opacity-60 grayscale' : isReported ? 'opacity-85' : ''}`}
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
               }}
@@ -90,9 +93,19 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
           {/* Corner status dot */}
           <span
             className={`absolute top-1 right-1 w-2 h-2 rounded-full ${
-              isOffline ? 'bg-rose-500 shadow-sm shadow-rose-500/50' : 'bg-emerald-400'
+              isReported
+                ? 'bg-amber-400 shadow-sm shadow-amber-400/80 animate-pulse'
+                : isOffline
+                ? 'bg-rose-500 shadow-sm shadow-rose-500/50'
+                : 'bg-emerald-400'
             }`}
-            title={isOffline ? 'Kênh không khả dụng (Offline)' : 'Kênh khả dụng (Online)'}
+            title={
+              isReported
+                ? 'Kênh đã bị báo cáo không khả dụng (Chờ duyệt)'
+                : isOffline
+                ? 'Kênh không khả dụng (Offline)'
+                : 'Kênh khả dụng (Online)'
+            }
           />
         </div>
 
@@ -102,6 +115,8 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
             <h3 className={`text-sm font-semibold truncate leading-tight ${
               isActive
                 ? 'text-amber-400'
+                : isReported
+                ? 'text-amber-200'
                 : isOffline
                 ? 'text-neutral-300'
                 : 'text-neutral-200'
@@ -135,7 +150,15 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
             )}
 
             {/* Availability Badge */}
-            {isOffline ? (
+            {isReported ? (
+              <span
+                className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/50 px-1.5 py-0.2 rounded flex items-center gap-1 shadow-sm"
+                title={channel.description || 'Kênh này đã được người dùng báo cáo là không khả dụng'}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span>Bị báo cáo</span>
+              </span>
+            ) : isOffline ? (
               <span
                 className="text-[10px] font-bold text-rose-400 bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 rounded flex items-center gap-1"
                 title={channel.description || 'Kênh hiện không phát được / Link bị gián đoạn'}
@@ -159,12 +182,16 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
             )}
           </div>
 
-          {/* Offline Reason or Diagnostic note */}
-          {isOffline && channel.description && (
+          {/* Offline / Reported Reason or Diagnostic note */}
+          {isReported ? (
+            <p className="text-[10px] text-amber-300/90 mt-1 truncate max-w-full font-medium" title={channel.description || 'Đã báo cáo không khả dụng'}>
+              ⚠️ {channel.description || 'Đã báo cáo không khả dụng'}
+            </p>
+          ) : isOffline && channel.description ? (
             <p className="text-[10px] text-rose-300/80 mt-1 truncate max-w-full font-mono" title={channel.description}>
               {channel.description}
             </p>
-          )}
+          ) : null}
         </div>
 
         {/* Favorite Button */}

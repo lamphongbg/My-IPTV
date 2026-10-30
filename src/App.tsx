@@ -28,9 +28,13 @@ import {
   CheckCircle,
   Sliders,
   X,
-  Subtitles
+  Subtitles,
+  Lock,
+  LogOut,
+  Check,
 } from 'lucide-react';
 
+const ADMIN_TOKEN_KEY = 'my_iptv_admin_token';
 const STORAGE_FAVORITES_KEY = 'my_iptv_favorites_v1';
 const STORAGE_RECENT_KEY = 'my_iptv_recent_v1';
 const STORAGE_PAGE_SIZE_KEY = 'my_iptv_page_size_v1';
@@ -83,6 +87,17 @@ export default function App() {
   const [recentActiveCount, setRecentActiveCount] = useState<number>(0);
   const [recentOfflineCount, setRecentOfflineCount] = useState<number>(0);
   const [recentSubtitlesCount, setRecentSubtitlesCount] = useState<number>(0);
+
+  // Admin authentication state
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    return typeof window !== 'undefined' && Boolean(localStorage.getItem(ADMIN_TOKEN_KEY));
+  });
+  const [adminUser, setAdminUser] = useState<string>('');
+  const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState<boolean>(false);
+  const [loginUsernameInput, setLoginUsernameInput] = useState<string>('admin');
+  const [loginPasswordInput, setLoginPasswordInput] = useState<string>('admin123');
+  const [loginError, setLoginError] = useState<string>('');
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
   // Background Batch Channel Scanner state
   const [scanProgress, setScanProgress] = useState<{
@@ -186,6 +201,80 @@ export default function App() {
       console.warn('Could not read localStorage:', e);
     }
   }, []);
+
+  // Check admin token validity
+  const verifyAdminToken = useCallback(async () => {
+    try {
+      const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+      if (!token) {
+        setIsAdmin(false);
+        setAdminUser('');
+        return;
+      }
+      const res = await fetch('/api/admin/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated) {
+          setIsAdmin(true);
+          setAdminUser(data.username || 'admin');
+        } else {
+          setIsAdmin(false);
+          setAdminUser('');
+          localStorage.removeItem(ADMIN_TOKEN_KEY);
+        }
+      } else {
+        setIsAdmin(false);
+        setAdminUser('');
+      }
+    } catch {
+      setIsAdmin(false);
+      setAdminUser('');
+    }
+  }, []);
+
+  useEffect(() => {
+    verifyAdminToken();
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === ADMIN_TOKEN_KEY) {
+        verifyAdminToken();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [verifyAdminToken]);
+
+  const handleAdminLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    setLoginError('');
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUsernameInput, password: loginPasswordInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Tên đăng nhập hoặc mật khẩu không chính xác');
+      }
+      localStorage.setItem(ADMIN_TOKEN_KEY, data.token);
+      setIsAdmin(true);
+      setAdminUser(data.username || 'admin');
+      setIsAdminLoginModalOpen(false);
+    } catch (err: any) {
+      setLoginError(err.message || 'Đăng nhập thất bại');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    setIsAdmin(false);
+    setAdminUser('');
+  };
 
   // Debounce search input by 250ms
   useEffect(() => {
@@ -672,15 +761,38 @@ export default function App() {
 
           {/* Quick Actions & Navigation Bridge */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Admin Portal Button */}
-            <button
-              onClick={navigateToAdmin}
-              className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-amber-400 hover:text-amber-300 border border-neutral-700/80 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
-              title="Mở bảng điều khiển quản trị playlist và kênh"
-            >
-              <Shield className="w-3.5 h-3.5" />
-              <span>Quản Trị</span>
-            </button>
+            {/* Admin Portal / Auth Button */}
+            {isAdmin ? (
+              <div className="flex items-center gap-1.5 bg-neutral-900 border border-amber-500/30 rounded-lg p-0.5">
+                <button
+                  type="button"
+                  onClick={navigateToAdmin}
+                  className="px-2.5 py-1 text-amber-400 hover:text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Mở bảng điều khiển quản trị playlist và kênh"
+                >
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Admin ({adminUser || 'admin'})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAdminLogout}
+                  className="p-1 text-neutral-400 hover:text-rose-400 hover:bg-neutral-800 rounded transition cursor-pointer"
+                  title="Đăng xuất quyền quản trị"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsAdminLoginModalOpen(true)}
+                className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-400 border border-neutral-700/80 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                title="Đăng nhập tài khoản Admin để mở khóa tính năng quét khả dụng & quản trị"
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Đăng nhập Admin</span>
+              </button>
+            )}
 
             {/* Nokia Simulator Button */}
             <button
@@ -796,9 +908,11 @@ export default function App() {
               playTrigger={playTrigger}
               onOpenDetails={(ch) => handleOpenDetails(ch)}
               isNokiaLightweight={isNokiaLightweight}
+              isAdmin={isAdmin}
               onChannelUpdate={(updatedCh) => {
                 setSelectedChannel((prev) => (prev && prev.id === updatedCh.id ? { ...prev, ...updatedCh } : prev));
                 setChannels((prev) => prev.map((ch) => (ch.id === updatedCh.id ? { ...ch, ...updatedCh } : ch)));
+                fetchMetadata();
               }}
             />
 
@@ -959,27 +1073,29 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Scan Action Buttons */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleStartBatchScan}
-                    disabled={scanProgress?.isRunning || isStartingScan}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 transition shadow"
-                    title={
-                      activeGroup !== 'all' && activeGroup !== 'favorites' && activeGroup !== 'recent'
-                        ? `Tự động kiểm tra ${displayedListTotal} kênh trong list "${activeGroup}"`
-                        : 'Tự động kiểm tra từng luồng và đánh dấu offline các kênh hỏng'
-                    }
-                  >
-                    <Activity className={`w-3.5 h-3.5 ${scanProgress?.isRunning ? 'animate-spin' : ''}`} />
-                    <span>{scanProgress?.isRunning ? 'Đang Rà Soát...' : 'Quét Tính Khả Dụng'}</span>
-                  </button>
-                </div>
+                {/* Scan Action Buttons - ONLY VISIBLE WHEN LOGGED IN AS ADMIN */}
+                {isAdmin && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleStartBatchScan}
+                      disabled={scanProgress?.isRunning || isStartingScan}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 transition shadow cursor-pointer"
+                      title={
+                        activeGroup !== 'all' && activeGroup !== 'favorites' && activeGroup !== 'recent'
+                          ? `Tự động kiểm tra ${displayedListTotal} kênh trong list "${activeGroup}"`
+                          : 'Tự động kiểm tra từng luồng và đánh dấu offline các kênh hỏng'
+                      }
+                    >
+                      <Activity className={`w-3.5 h-3.5 ${scanProgress?.isRunning ? 'animate-spin' : ''}`} />
+                      <span>{scanProgress?.isRunning ? 'Đang Rà Soát...' : 'Quét Tính Khả Dụng'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Batch Scan Progress Banner */}
-              {scanProgress && (scanProgress.isRunning || scanProgress.scanned > 0) && (
+              {/* Batch Scan Progress Banner - ONLY VISIBLE WHEN LOGGED IN AS ADMIN */}
+              {isAdmin && scanProgress && (scanProgress.isRunning || scanProgress.scanned > 0) && (
                 <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-lg space-y-2 text-xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1350,6 +1466,13 @@ export default function App() {
         onClose={() => setDetailChannel(null)}
         onPlayChannel={(ch) => handleSelectChannel(ch)}
         isNokiaLightweight={isNokiaLightweight}
+        isAdmin={isAdmin}
+        onChannelUpdate={(updatedCh) => {
+          setSelectedChannel((prev) => (prev && prev.id === updatedCh.id ? { ...prev, ...updatedCh } : prev));
+          setChannels((prev) => prev.map((ch) => (ch.id === updatedCh.id ? { ...ch, ...updatedCh } : ch)));
+          setDetailChannel(updatedCh);
+          fetchMetadata();
+        }}
       />
 
       <NokiaSimulatorModal
@@ -1362,6 +1485,92 @@ export default function App() {
         onClose={() => setIsM3uModalOpen(false)}
         onImportChannels={handleImportChannels}
       />
+
+      {/* Admin Login Modal */}
+      {isAdminLoginModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            <button
+              onClick={() => setIsAdminLoginModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition"
+              title="Đóng"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                <Lock className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-white">Đăng nhập Quản trị viên</h2>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Mở khóa tính năng quét khả dụng luồng kênh và quản trị playlist
+                </p>
+              </div>
+            </div>
+
+            {loginError && (
+              <div className="mb-4 p-3 bg-rose-950/60 border border-rose-800/80 rounded-xl text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
+                  Tên đăng nhập
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={loginUsernameInput}
+                  onChange={(e) => setLoginUsernameInput(e.target.value)}
+                  placeholder="admin"
+                  className="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
+                  Mật khẩu
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={loginPasswordInput}
+                  onChange={(e) => setLoginPasswordInput(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 transition"
+                />
+              </div>
+
+              <div className="p-2.5 bg-neutral-950/70 border border-neutral-800 rounded-lg text-[11px] text-neutral-400">
+                Tài khoản mặc định: <span className="font-mono text-amber-300">admin</span> &bull; Mật khẩu: <span className="font-mono text-amber-300">admin123</span>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAdminLoginModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-neutral-400 hover:text-white transition"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-neutral-950 text-xs font-bold rounded-xl transition shadow flex items-center gap-2 cursor-pointer"
+                >
+                  {isLoggingIn && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isLoggingIn ? 'Đang xác thực...' : 'Đăng nhập'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

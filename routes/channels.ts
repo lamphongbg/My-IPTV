@@ -416,6 +416,48 @@ router.patch('/api/channels/:id/subtitles', async (req: Request, res: Response) 
   }
 });
 
+router.post('/api/channels/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status, description, is_reported } = req.body;
+    const channel = await getChannelFromDb(id);
+    if (!channel) {
+      return res.status(404).json({ error: 'Không tìm thấy kênh.' });
+    }
+    const targetStatus = status === 'offline' ? 'offline' : status === 'reported' ? 'reported' : 'active';
+    const updated = await updateChannel(id, {
+      status: targetStatus,
+      is_reported: targetStatus === 'reported' ? true : targetStatus === 'active' ? false : (is_reported !== undefined ? Boolean(is_reported) : channel.is_reported),
+      description: typeof description === 'string' ? description : (targetStatus === 'active' ? '' : channel.description),
+      updated_at: new Date().toISOString(),
+    });
+    res.json({ success: true, channel: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/api/channels/:id/report', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const channel = await getChannelFromDb(id);
+    if (!channel) {
+      return res.status(404).json({ error: 'Không tìm thấy kênh.' });
+    }
+    const updated = await updateChannel(id, {
+      status: 'reported',
+      is_reported: true,
+      reported_at: new Date().toISOString(),
+      description: typeof reason === 'string' && reason.trim() ? reason.trim() : 'Đã báo cáo không khả dụng',
+      updated_at: new Date().toISOString(),
+    });
+    res.json({ success: true, message: 'Báo cáo kênh không khả dụng thành công', channel: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/api/channels/reset-status', async (_req: Request, res: Response) => {
   try {
     const channels = await getAllChannelsAdmin();
