@@ -1,5 +1,7 @@
 import { TranscriptItem } from './subtitleTranslator';
 
+export const GOOGLE_FEMALE_VOICE_ID = 'google-female';
+
 export interface TtsSettings {
   voiceURI: string;
   rate: number; // 0.6 - 2.0 (default 1.0)
@@ -8,24 +10,25 @@ export interface TtsSettings {
 }
 
 export const DEFAULT_TTS_SETTINGS: TtsSettings = {
-  voiceURI: '',
+  voiceURI: GOOGLE_FEMALE_VOICE_ID,
   rate: 1.0,
   pitch: 1.0,
   volume: 1.0,
 };
 
 /**
- * Check if Web Speech Synthesis (TTS) is supported in current browser
+ * Check if Web Speech Synthesis or HTML5 Audio TTS is supported
  */
 export function isTtsSupported(): boolean {
-  return typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  if (typeof window === 'undefined') return false;
+  return 'Audio' in window || ('speechSynthesis' in window && 'SpeechSynthesisUtterance' in window);
 }
 
 /**
  * Retrieve installed voices from browser SpeechSynthesis
  */
 export function getAvailableVoices(): SpeechSynthesisVoice[] {
-  if (!isTtsSupported()) return [];
+  if (typeof window === 'undefined' || !window.speechSynthesis) return [];
   try {
     return window.speechSynthesis.getVoices() || [];
   } catch {
@@ -34,37 +37,69 @@ export function getAvailableVoices(): SpeechSynthesisVoice[] {
 }
 
 /**
+ * Check if a voice is female based on its name and metadata
+ */
+export function isVoiceFemale(voice: { name: string; voiceURI?: string }): boolean {
+  const name = (voice.name || '').toLowerCase();
+  const uri = (voice.voiceURI || '').toLowerCase();
+  return (
+    name.includes('female') ||
+    name.includes('hoaimy') ||
+    name.includes('hoài my') ||
+    name.includes('linh') ||
+    name.includes('mai') ||
+    name.includes('lan') ||
+    name.includes('chi') ||
+    name.includes('huong') ||
+    name.includes('hương') ||
+    name.includes('thao') ||
+    name.includes('thảo') ||
+    name.includes('trang') ||
+    name.includes('ngoc') ||
+    name.includes('ngọc') ||
+    name.includes('zira') ||
+    name.includes('eva') ||
+    name.includes('samantha') ||
+    name.includes('victoria') ||
+    uri.includes('female')
+  );
+}
+
+/**
  * Listen to asynchronous voices loading event (especially on Chrome and Android)
  */
 export function onVoicesChanged(callback: (voices: SpeechSynthesisVoice[]) => void): () => void {
-  if (!isTtsSupported()) return () => {};
+  if (typeof window === 'undefined' || !window.speechSynthesis) return () => {};
 
   const handleVoices = () => {
     callback(getAvailableVoices());
   };
 
-  // Immediate callback
   handleVoices();
 
-  if (typeof window !== 'undefined' && window.speechSynthesis) {
-    window.speechSynthesis.onvoiceschanged = handleVoices;
-  }
+  window.speechSynthesis.onvoiceschanged = handleVoices;
 
   return () => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      if (window.speechSynthesis.onvoiceschanged === handleVoices) {
-        window.speechSynthesis.onvoiceschanged = null;
-      }
+    if (window.speechSynthesis && window.speechSynthesis.onvoiceschanged === handleVoices) {
+      window.speechSynthesis.onvoiceschanged = null;
     }
   };
 }
 
+let activeAudio: HTMLAudioElement | null = null;
 let activeUtterance: SpeechSynthesisUtterance | null = null;
 
 /**
- * Stop any ongoing TTS speech
+ * Stop any ongoing TTS speech (both HTML5 audio and browser synthesis)
  */
 export function stopSpeaking(): void {
+  if (activeAudio) {
+    try {
+      activeAudio.pause();
+      activeAudio.currentTime = 0;
+    } catch {}
+    activeAudio = null;
+  }
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     try {
       window.speechSynthesis.cancel();
@@ -74,26 +109,17 @@ export function stopSpeaking(): void {
 }
 
 /**
- * Read text aloud using browser SpeechSynthesis API with full voice, pitch, rate, and volume customization
+ * Browser utterance speech synthesis helper
  */
-export function speakText(
+function speakWithBrowserSpeech(
   text: string,
-  lang: string = 'vi-VN',
-  config?: Partial<TtsSettings> | number,
+  lang: string,
+  settings: TtsSettings,
   onEnd?: () => void
 ): boolean {
-  if (!isTtsSupported() || !text || !text.trim()) {
-    return false;
-  }
-
-  const settings: TtsSettings =
-    typeof config === 'number'
-      ? { ...DEFAULT_TTS_SETTINGS, rate: config }
-      : { ...DEFAULT_TTS_SETTINGS, ...config };
+  if (typeof window === 'undefined' || !window.speechSynthesis) return false;
 
   try {
-    stopSpeaking();
-
     const utterance = new SpeechSynthesisUtterance(text.trim());
     utterance.lang = lang;
     utterance.rate = Math.max(0.6, Math.min(2.0, settings.rate));
@@ -103,19 +129,20 @@ export function speakText(
     const voices = getAvailableVoices();
     let selectedVoice: SpeechSynthesisVoice | undefined;
 
-    // 1. Prioritize explicit voiceURI match
-    if (settings.voiceURI) {
+    // 1. Explicit voiceURI match
+    if (settings.voiceURI && settings.voiceURI !== GOOGLE_FEMALE_VOICE_ID) {
       selectedVoice = voices.find((v) => v.voiceURI === settings.voiceURI || v.name === settings.voiceURI);
     }
 
-    // 2. Fallback to matching target language prefix (e.g. vi-VN)
+    // 2. Prioritize female voice if available for target language
     if (!selectedVoice) {
       const langPrefix = lang.split('-')[0].toLowerCase();
-      selectedVoice = voices.find(
+      const matchingVoices = voices.filter(
         (v) =>
           v.lang.toLowerCase() === lang.toLowerCase() ||
           v.lang.toLowerCase().replace('_', '-').startsWith(langPrefix)
       );
+      selectedVoice = matchingVoices.find((v) => isVoiceFemale(v)) || matchingVoices[0];
     }
 
     if (selectedVoice) {
@@ -129,7 +156,7 @@ export function speakText(
 
     utterance.onerror = (e) => {
       if (e.error !== 'canceled') {
-        console.warn('[TTS] Speech synthesis error:', e);
+        console.warn('[TTS] Browser speech synthesis error:', e);
       }
       activeUtterance = null;
       onEnd?.();
@@ -139,9 +166,69 @@ export function speakText(
     window.speechSynthesis.speak(utterance);
     return true;
   } catch (err) {
-    console.warn('[TTS] Failed to speak:', err);
+    console.warn('[TTS] Failed to speak with browser:', err);
     return false;
   }
+}
+
+/**
+ * Read text aloud using Natural Female Voice API (Google) or browser SpeechSynthesis API
+ */
+export function speakText(
+  text: string,
+  lang: string = 'vi-VN',
+  config?: Partial<TtsSettings> | number,
+  onEnd?: () => void
+): boolean {
+  if (!text || !text.trim()) {
+    return false;
+  }
+
+  const settings: TtsSettings =
+    typeof config === 'number'
+      ? { ...DEFAULT_TTS_SETTINGS, rate: config }
+      : { ...DEFAULT_TTS_SETTINGS, ...config };
+
+  stopSpeaking();
+
+  // 1. If 'google-female' (Vietnamese Female Voice) is requested:
+  if (settings.voiceURI === GOOGLE_FEMALE_VOICE_ID || (!settings.voiceURI && lang.startsWith('vi'))) {
+    try {
+      const cleanSnippet = text.trim().slice(0, 250);
+      const langCode = lang.startsWith('vi') ? 'vi' : lang.split('-')[0];
+      const audioUrl = `/api/tts?lang=${encodeURIComponent(langCode)}&text=${encodeURIComponent(cleanSnippet)}`;
+      const audio = new Audio(audioUrl);
+      audio.playbackRate = Math.max(0.7, Math.min(1.8, settings.rate || 1.0));
+      audio.volume = Math.max(0.1, Math.min(1.0, settings.volume || 1.0));
+
+      audio.onended = () => {
+        activeAudio = null;
+        onEnd?.();
+      };
+
+      audio.onerror = () => {
+        activeAudio = null;
+        // Fallback to browser synthesis if network fails
+        speakWithBrowserSpeech(text, lang, settings, onEnd);
+      };
+
+      activeAudio = audio;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('[TTS] Natural female audio playback failed, falling back to browser speech:', err);
+          speakWithBrowserSpeech(text, lang, settings, onEnd);
+        });
+      }
+      return true;
+    } catch (err) {
+      console.warn('[TTS] Audio initialization error, falling back to browser speech:', err);
+      return speakWithBrowserSpeech(text, lang, settings, onEnd);
+    }
+  }
+
+  // 2. Browser speech synthesis
+  return speakWithBrowserSpeech(text, lang, settings, onEnd);
 }
 
 /**
@@ -159,76 +246,73 @@ function formatSrtTimestamp(ms: number): string {
 }
 
 /**
- * Convert transcript items to standard .SRT (SubRip) format
+ * Export array of TranscriptItem to standard .SRT subtitle format
  */
 export function exportToSrt(items: TranscriptItem[]): string {
   if (!items || items.length === 0) return '';
 
-  // Sort chronologically (oldest first for video playback)
   const sorted = [...items].sort((a, b) => a.timestamp - b.timestamp);
-  const baseTime = sorted[0].timestamp;
+  const firstTimestamp = sorted[0].timestamp;
 
   const srtBlocks = sorted.map((item, index) => {
-    const startRelMs = Math.max(0, item.timestamp - baseTime);
-    // Standard reading duration estimation: ~4 seconds baseline + text length
-    const durationMs = Math.max(3000, Math.min(8000, 2000 + (item.translatedText || item.originalText).length * 80));
-    const endRelMs = startRelMs + durationMs;
+    const srtIndex = index + 1;
+    const startOffsetMs = Math.max(0, item.timestamp - firstTimestamp);
+    const durationMs = Math.min(6000, Math.max(2200, item.translatedText.length * 80));
+    const endOffsetMs = startOffsetMs + durationMs;
 
-    const startTime = formatSrtTimestamp(startRelMs);
-    const endTime = formatSrtTimestamp(endRelMs);
+    const startSrt = formatSrtTimestamp(startOffsetMs);
+    const endSrt = formatSrtTimestamp(endOffsetMs);
 
-    const lines: string[] = [];
-    if (item.translatedText) {
-      lines.push(item.translatedText);
-    }
-    if (item.originalText && item.originalText !== item.translatedText) {
-      lines.push(`(${item.originalText})`);
-    }
+    const textToInclude = item.translatedText
+      ? item.sourceType === 'stream-cc' && item.originalText !== item.translatedText
+        ? `${item.translatedText}\n${item.originalText}`
+        : item.translatedText
+      : item.originalText;
 
-    return `${index + 1}\n${startTime} --> ${endTime}\n${lines.join('\n')}\n`;
+    return `${srtIndex}\n${startSrt} --> ${endSrt}\n${textToInclude}\n`;
   });
 
   return srtBlocks.join('\n');
 }
 
 /**
- * Convert transcript items to human-readable .TXT transcript
+ * Export array of TranscriptItem to clean, readable .TXT format
  */
 export function exportToTxt(items: TranscriptItem[], channelName?: string): string {
-  const header = [
-    '=====================================================================',
-    `BẢN GHI NHẬT KÝ PHỤ ĐỀ TRUYỀN HÌNH (IPTV LIVE TRANSCRIPT)`,
-    `Kênh phát sóng: ${channelName || 'IPTV Live Stream'}`,
-    `Thời gian xuất file: ${new Date().toLocaleString('vi-VN')}`,
-    `Tổng số câu thoại ghi nhận: ${items.length}`,
-    '=====================================================================\n',
-  ].join('\n');
+  if (!items || items.length === 0) return '';
 
-  // Chronological order
   const sorted = [...items].sort((a, b) => a.timestamp - b.timestamp);
+  const header = `=== NHẬT KÝ HỘI THOẠI & PHỤ ĐỀ IPTV ===\n` +
+    `Kênh: ${channelName || 'IPTV Stream'}\n` +
+    `Thời gian xuất: ${new Date().toLocaleString('vi-VN')}\n` +
+    `Tổng số câu thoại: ${sorted.length}\n` +
+    `----------------------------------------\n\n`;
 
-  const rows = sorted.map((item, index) => {
-    const sourceLabel = item.sourceType === 'speech-recognition' ? '[Voice AI]' : '[HLS CC]';
-    const translated = item.translatedText ? `=> [Dịch]: ${item.translatedText}` : '';
-    const original = `[Gốc]: ${item.originalText}`;
-
-    return `[#${index + 1}] [${item.timeFormatted}] ${sourceLabel}\n${original}\n${translated}\n`;
+  const lines = sorted.map((item, idx) => {
+    const time = item.timeFormatted || new Date(item.timestamp).toLocaleTimeString('vi-VN');
+    const sourceTag = item.sourceType === 'speech-recognition' ? '[Voice AI]' : '[HLS CC]';
+    if (item.translatedText && item.translatedText !== item.originalText) {
+      return `[${idx + 1}] (${time}) ${sourceTag} ${item.translatedText} (Gốc: ${item.originalText})`;
+    }
+    return `[${idx + 1}] (${time}) ${sourceTag} ${item.translatedText || item.originalText}`;
   });
 
-  return `${header}\n${rows.join('\n')}`;
+  return header + lines.join('\n\n');
 }
 
 /**
- * Trigger browser file download
+ * Trigger browser file download with blob
  */
 export function triggerFileDownload(content: string, filename: string, mimeType = 'text/plain;charset=utf-8'): void {
+  if (typeof window === 'undefined') return;
+
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }

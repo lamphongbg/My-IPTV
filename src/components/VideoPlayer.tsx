@@ -338,6 +338,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return 'en-US';
     }
   });
+  const speechSourceLangRef = useRef(speechSourceLang);
+  useEffect(() => {
+    speechSourceLangRef.current = speechSourceLang;
+    try {
+      localStorage.setItem('iptv_speech_source_lang', speechSourceLang);
+    } catch {}
+  }, [speechSourceLang]);
   const [liveSpeechStatus, setLiveSpeechStatus] = useState<LiveSpeechStatus>('idle');
   const [liveSpeechMessage, setLiveSpeechMessage] = useState<string>('');
   const liveSpeechRecognizerRef = useRef<LiveSpeechRecognizer | null>(null);
@@ -564,8 +571,151 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     []
   );
 
+  // Phase 3 Live Speech Recognition: Dedicated high-speed transcript processor
+  const handleProcessSpeechTranscript = useCallback(
+    async (transcript: string, isFinal: boolean) => {
+      if (!subtitlesEnabledRef.current || !transcript || !transcript.trim()) return;
+      const text = transcript.trim();
+      const now = Date.now();
+      const cueId = `voice_${now}_${Math.random().toString(36).substring(2, 6)}`;
+
+      if (subtitleClearTimerRef.current) {
+        clearTimeout(subtitleClearTimerRef.current);
+      }
+
+      const targetLang = subtitleTargetLangRef.current || 'vi';
+      const sourceLangCode = speechSourceLangRef.current || 'en-US';
+      const isSameLang =
+        sourceLangCode.toLowerCase().startsWith(targetLang.toLowerCase()) ||
+        (sourceLangCode.toLowerCase().startsWith('vi') && targetLang === 'vi') ||
+        (sourceLangCode.toLowerCase().startsWith('en') && targetLang === 'en');
+
+      if (!isFinal) {
+        // Real-time interim preview: displays as words are being spoken
+        setCurrentSubtitle({
+          id: cueId,
+          originalText: text,
+          translatedText: isSameLang ? text : '',
+          sourceLang: sourceLangCode,
+          targetLang,
+          engine: subtitleEngineRef.current,
+          sourceType: 'speech-recognition',
+          timestamp: now,
+          active: true,
+          isLoading: true,
+        });
+        return;
+      }
+
+      // Finalized sentence / pause detected
+      if (isSameLang) {
+        // Direct display without foreign translation (e.g. Vietnamese channel -> Vietnamese subtitle)
+        setCurrentSubtitle({
+          id: cueId,
+          originalText: text,
+          translatedText: text,
+          sourceLang: sourceLangCode,
+          targetLang,
+          engine: subtitleEngineRef.current,
+          sourceType: 'speech-recognition',
+          timestamp: now,
+          active: true,
+          isLoading: false,
+        });
+
+        const timeFormatted = new Date(now).toLocaleTimeString('vi-VN', { hour12: false });
+        const historyItem: TranscriptItem = {
+          id: cueId,
+          timestamp: now,
+          timeFormatted,
+          originalText: text,
+          translatedText: text,
+          sourceLang: sourceLangCode,
+          targetLang,
+          engine: subtitleEngineRef.current,
+          sourceType: 'speech-recognition',
+          genre: subtitleGenreRef.current,
+        };
+        setTranscriptHistory((prev) => [historyItem, ...prev.filter((item) => item.id !== cueId)].slice(0, 300));
+
+        if (autoTtsEnabledRef.current) {
+          speakText(text, targetLang === 'vi' ? 'vi-VN' : targetLang, ttsSettingsRef.current);
+        }
+
+        const durationMs = calculateCueDurationMs(text);
+        subtitleClearTimerRef.current = setTimeout(() => {
+          setCurrentSubtitle((prev) => (prev && prev.id === cueId ? { ...prev, active: false } : prev));
+        }, durationMs);
+      } else {
+        // Needs translation from foreign speech to target language
+        setCurrentSubtitle({
+          id: cueId,
+          originalText: text,
+          translatedText: '',
+          sourceLang: sourceLangCode,
+          targetLang,
+          engine: subtitleEngineRef.current,
+          sourceType: 'speech-recognition',
+          timestamp: now,
+          active: true,
+          isLoading: true,
+        });
+
+        try {
+          const res = await translateSubtitleText(
+            text,
+            targetLang,
+            subtitleEngineRef.current,
+            subtitleGenreRef.current
+          );
+
+          setCurrentSubtitle((prev) => {
+            if (prev && prev.id === cueId) {
+              return {
+                ...prev,
+                translatedText: res.translatedText,
+                detectedLang: res.detectedLang,
+                latencyMs: res.latencyMs,
+                isLoading: false,
+              };
+            }
+            return prev;
+          });
+
+          const timeFormatted = new Date(now).toLocaleTimeString('vi-VN', { hour12: false });
+          const historyItem: TranscriptItem = {
+            id: cueId,
+            timestamp: now,
+            timeFormatted,
+            originalText: text,
+            translatedText: res.translatedText,
+            sourceLang: res.detectedLang || sourceLangCode,
+            targetLang,
+            engine: subtitleEngineRef.current,
+            sourceType: 'speech-recognition',
+            genre: subtitleGenreRef.current,
+          };
+          setTranscriptHistory((prev) => [historyItem, ...prev.filter((item) => item.id !== cueId)].slice(0, 300));
+
+          if (autoTtsEnabledRef.current && res.translatedText) {
+            speakText(res.translatedText, targetLang === 'vi' ? 'vi-VN' : targetLang, ttsSettingsRef.current);
+          }
+        } catch (err) {
+          console.warn('[VideoPlayer] Live speech translation error:', err);
+          setCurrentSubtitle((prev) => (prev && prev.id === cueId ? { ...prev, isLoading: false } : prev));
+        }
+
+        const durationMs = calculateCueDurationMs(text);
+        subtitleClearTimerRef.current = setTimeout(() => {
+          setCurrentSubtitle((prev) => (prev && prev.id === cueId ? { ...prev, active: false } : prev));
+        }, durationMs);
+      }
+    },
+    []
+  );
+
   // Phase 3 Live Speech Recognition Controller & Event handlers
-  const handleToggleLiveSpeech = useCallback(() => {
+  const handleToggleLiveSpeech = useCallback(async () => {
     if (!liveSpeechEnabled) {
       if (!subtitlesEnabledRef.current) {
         setSubtitlesEnabled(true);
@@ -574,7 +724,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       try {
         localStorage.setItem('iptv_live_speech_enabled', 'true');
       } catch {}
-      liveSpeechRecognizerRef.current?.start();
+      await liveSpeechRecognizerRef.current?.start();
     } else {
       setLiveSpeechEnabled(false);
       try {
@@ -594,18 +744,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Initialize LiveSpeechRecognizer (Audio Speech-to-Text for channels without CC)
   useEffect(() => {
-    const recognizer = new LiveSpeechRecognizer();
+    const recognizer = new LiveSpeechRecognizer(speechSourceLangRef.current);
     setIsSpeechSupported(recognizer.isSupported());
-    recognizer.setLanguage(speechSourceLang);
 
     recognizer.setCallbacks(
       (text: string, isFinal: boolean) => {
-        if (!subtitlesEnabledRef.current) return;
-        if (sentenceAggregatorRef.current) {
-          sentenceAggregatorRef.current.pushCue(text);
-        } else {
-          handleProcessAggregatedSentence(text, isFinal, 'speech-recognition');
-        }
+        handleProcessSpeechTranscript(text, isFinal);
       },
       (status: LiveSpeechStatus, message?: string) => {
         setLiveSpeechStatus(status);
@@ -623,7 +767,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       recognizer.stop();
       liveSpeechRecognizerRef.current = null;
     };
-  }, [handleProcessAggregatedSentence, speechSourceLang]);
+  }, [handleProcessSpeechTranscript]);
 
   // Synchronize live speech recognition with stream playback state
   useEffect(() => {
@@ -711,9 +855,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } else {
         // Toggled ON: Activate subtitle track
         if (hlsRef.current && hlsRef.current.subtitleTracks && hlsRef.current.subtitleTracks.length > 0) {
-          const targetId = selectedSubtitleTrackId >= 0 && selectedSubtitleTrackId < 1000 ? selectedSubtitleTrackId : 0;
+          const defaultIdx = hlsRef.current.subtitleTracks.findIndex((t) => t.default);
+          const targetId =
+            selectedSubtitleTrackId >= 0 && selectedSubtitleTrackId < 1000
+              ? selectedSubtitleTrackId
+              : defaultIdx >= 0
+              ? defaultIdx
+              : 0;
           hlsRef.current.subtitleTrack = targetId;
-          setSelectedSubtitleTrackId(targetId);
         }
         if (videoRef.current && videoRef.current.textTracks) {
           for (let i = 0; i < videoRef.current.textTracks.length; i++) {
@@ -739,15 +888,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           tracks[i].mode = i === realIdx ? 'hidden' : 'disabled';
         }
       }
+    } else if (trackId === -1) {
+      // Auto select default broadcast track: Activate default or first track (NEVER disable!)
+      if (hlsRef.current && hlsRef.current.subtitleTracks && hlsRef.current.subtitleTracks.length > 0) {
+        const defaultIndex = hlsRef.current.subtitleTracks.findIndex((t) => t.default);
+        const resolvedId = defaultIndex >= 0 ? defaultIndex : 0;
+        hlsRef.current.subtitleTrack = resolvedId;
+      }
+      if (videoRef.current && videoRef.current.textTracks) {
+        const tracks = videoRef.current.textTracks;
+        for (let i = 0; i < tracks.length; i++) {
+          tracks[i].mode = 'hidden';
+        }
+      }
     } else {
-      // Hls manifest subtitle track
+      // Explicit Hls manifest subtitle track (0, 1, 2...)
       if (hlsRef.current) {
         hlsRef.current.subtitleTrack = trackId;
       }
       if (videoRef.current && videoRef.current.textTracks) {
         const tracks = videoRef.current.textTracks;
         for (let i = 0; i < tracks.length; i++) {
-          tracks[i].mode = trackId === -1 ? 'disabled' : 'hidden';
+          tracks[i].mode = 'hidden';
         }
       }
     }
@@ -1134,9 +1296,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
             track.oncuechange = () => {
               if (track.activeCues && track.activeCues.length > 0) {
-                const cue = track.activeCues[0] as any;
-                if (cue && cue.text) {
-                  handleProcessCueText(cue.text, track);
+                for (let c = 0; c < track.activeCues.length; c++) {
+                  const cue = track.activeCues[c] as any;
+                  if (cue && cue.text) {
+                    handleProcessCueText(cue.text, track);
+                  }
                 }
               }
             };
@@ -1194,9 +1358,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               track.mode = 'hidden';
               track.oncuechange = () => {
                 if (track.activeCues && track.activeCues.length > 0) {
-                  const cue = track.activeCues[0] as any;
-                  if (cue && cue.text) {
-                    handleProcessCueText(cue.text, track);
+                  for (let c = 0; c < track.activeCues.length; c++) {
+                    const cue = track.activeCues[c] as any;
+                    if (cue && cue.text) {
+                      handleProcessCueText(cue.text, track);
+                    }
                   }
                 }
               };
@@ -1216,9 +1382,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         });
 
-        // When subtitle segments finish parsing, sync detected tracks with state
-        hls.on(Hls.Events.CUES_PARSED, (_event: any, _data: any) => {
+        // When subtitle segments finish parsing, sync detected tracks and capture any live cue within PTS window
+        hls.on(Hls.Events.CUES_PARSED, (_event: any, data: any) => {
           scanAndRecordTextTracks();
+          if (data && Array.isArray(data.cues) && video) {
+            const curTime = video.currentTime;
+            for (let i = 0; i < data.cues.length; i++) {
+              const cue = data.cues[i];
+              if (
+                cue &&
+                cue.text &&
+                curTime >= (cue.startTime - 1.5) &&
+                curTime <= (cue.endTime + 1.5)
+              ) {
+                handleProcessCueText(cue.text);
+              }
+            }
+          }
         });
 
         hls.on(Hls.Events.NON_NATIVE_TEXT_TRACKS_FOUND, (_event: any, _data: any) => {

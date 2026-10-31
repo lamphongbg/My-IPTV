@@ -327,4 +327,46 @@ router.post('/api/translate', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * High-speed, high-fidelity TTS Proxy (Standard Natural Vietnamese Female Voice)
+ * Provides crystal clear female voice playback for all devices (Windows, Android, Nokia, iOS)
+ */
+router.get('/api/tts', async (req: Request, res: Response) => {
+  const text = (req.query.text as string) || '';
+  const lang = (req.query.lang as string) || 'vi';
+
+  if (!text || !text.trim()) {
+    return res.status(400).send('Missing text query parameter');
+  }
+
+  // Clip text to max 250 chars per sentence snippet to avoid upstream truncation
+  const safeText = text.trim().slice(0, 250);
+
+  try {
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(
+      lang
+    )}&client=tw-ob&q=${encodeURIComponent(safeText)}`;
+
+    const audioRes = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Referer: 'https://translate.google.com/',
+      },
+      signal: AbortSignal.timeout(4500),
+    });
+
+    if (audioRes.ok) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      const arrayBuf = await audioRes.arrayBuffer();
+      return res.send(Buffer.from(arrayBuf));
+    }
+  } catch (err: any) {
+    console.warn('[TTS Proxy] Upstream fetch error:', err?.message);
+  }
+
+  res.status(502).send('TTS upstream unavailable');
+});
+
 export default router;

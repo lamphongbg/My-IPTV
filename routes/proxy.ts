@@ -121,17 +121,29 @@ router.get('/api/proxy/stream', async (req: Request, res: Response) => {
       }
 
       const contentType = (remoteRes.headers['content-type'] || '').toLowerCase();
+      const isVtt = parsedUrl.pathname.endsWith('.vtt') || targetUrl.includes('.vtt');
       const isM3u8 =
-        contentType.includes('mpegurl') ||
-        contentType.includes('m3u8') ||
-        parsedUrl.pathname.endsWith('.m3u8') ||
-        parsedUrl.search.includes('.m3u8') ||
-        targetUrl.includes('.m3u8');
+        !isVtt &&
+        (contentType.includes('mpegurl') ||
+          contentType.includes('m3u8') ||
+          parsedUrl.pathname.endsWith('.m3u8') ||
+          parsedUrl.search.includes('.m3u8') ||
+          targetUrl.includes('.m3u8') ||
+          targetUrl.includes('subtitle') ||
+          targetUrl.includes('/subs/'));
 
       // If remote returned an error status (4xx/5xx), pass through directly
       if (remoteRes.statusCode && remoteRes.statusCode >= 400) {
         res.status(remoteRes.statusCode);
         if (contentType) res.setHeader('Content-Type', contentType);
+        remoteRes.pipe(res);
+        return;
+      }
+
+      if (isVtt) {
+        res.status(remoteRes.statusCode || 200);
+        res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=60');
         remoteRes.pipe(res);
         return;
       }

@@ -1,7 +1,7 @@
 /**
- * Live Speech Recognition Engine (Phase 3 - Audio Speech-to-Text)
- * Uses Web Speech API (webkitSpeechRecognition) to capture speech directly
- * for channels that lack CEA-608 / WebVTT closed captions.
+ * Live Speech Recognition Engine (Phase 3 - Audio Speech-to-Text & Subtitling)
+ * Uses Web Speech API (webkitSpeechRecognition) and MediaDevices API
+ * to capture and transcribe broadcast audio directly for channels without CC.
  */
 
 export type LiveSpeechStatus = 'unsupported' | 'idle' | 'listening' | 'speech-detected' | 'error';
@@ -27,20 +27,51 @@ export const SPOKEN_LANGUAGES: SpokenLanguageOption[] = [
 export class LiveSpeechRecognizer {
   private recognition: any = null;
   private isRunning: boolean = false;
+  private isStarting: boolean = false;
   private shouldRestart: boolean = false;
   private status: LiveSpeechStatus = 'idle';
   private sourceLang: string = 'en-US';
   private onTranscriptCallback: ((text: string, isFinal: boolean) => void) | null = null;
   private onStatusCallback: ((status: LiveSpeechStatus, message?: string) => void) | null = null;
-  private silenceTimer: any = null;
+  private restartTimer: any = null;
+  private consecutiveAborts: number = 0;
 
-  constructor() {
+  constructor(defaultLang = 'en-US') {
+    this.sourceLang = defaultLang;
     this.initRecognition();
   }
 
   public isSupported(): boolean {
     if (typeof window === 'undefined') return false;
     return Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+  }
+
+  /**
+   * Request browser microphone permission explicitly to avoid 'not-allowed' and 'aborted'
+   */
+  public async requestMicrophonePermission(): Promise<boolean> {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      return true;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Stop stream tracks immediately so SpeechRecognition has exclusive audio input access
+      stream.getTracks().forEach((track) => track.stop());
+      return true;
+    } catch (err: any) {
+      console.warn('[LiveSpeechRecognizer] Microphone permission inquiry:', err);
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+        this.status = 'error';
+        this.shouldRestart = false;
+        this.onStatusCallback?.(
+          'error',
+          'Vui lòng cho phép quyền truy cập Micro trên trình duyệt (bấm biểu tượng ổ khóa cạnh thanh địa chỉ) để AI nghe âm thanh kênh.'
+        );
+        return false;
+      }
+      return true;
+    }
   }
 
   private initRecognition() {
@@ -59,13 +90,15 @@ export class LiveSpeechRecognizer {
 
       this.recognition.onstart = () => {
         this.isRunning = true;
+        this.isStarting = false;
         this.status = 'listening';
+        this.consecutiveAborts = 0;
         this.onStatusCallback?.('listening', 'Đang lắng nghe âm thanh hội thoại...');
       };
 
       this.recognition.onspeechstart = () => {
         this.status = 'speech-detected';
-        this.onStatusCallback?.('speech-detected', 'Phát hiện giọng nói...');
+        this.onStatusCallback?.('speech-detected', 'Đang phát hiện giọng nói...');
       };
 
       this.recognition.onspeechend = () => {
@@ -101,10 +134,23 @@ export class LiveSpeechRecognizer {
 
       this.recognition.onerror = (event: any) => {
         const error = event.error;
-        console.warn('[LiveSpeechRecognizer] Speech recognition event:', error);
+        console.warn('[LiveSpeechRecognizer] Speech event:', error);
 
         if (error === 'no-speech') {
-          // Normal background silence, continue listening
+          // Normal silence between sentences
+          this.status = 'listening';
+          this.onStatusCallback?.('listening', 'Đang lắng nghe âm thanh hội thoại...');
+          return;
+        }
+
+        if (error === 'aborted') {
+          // Chrome fires 'aborted' when restarting or switching audio context.
+          // NEVER display raw "aborted" to user! Schedule a smooth auto-recovery.
+          this.consecutiveAborts++;
+          if (this.shouldRestart) {
+            const delay = Math.min(1500, 300 * this.consecutiveAborts);
+            this.scheduleRestart(delay);
+          }
           return;
         }
 
@@ -112,34 +158,40 @@ export class LiveSpeechRecognizer {
           this.status = 'error';
           this.isRunning = false;
           this.shouldRestart = false;
-          this.onStatusCallback?.('error', 'Chưa cấp quyền truy cập Micro / Âm thanh trên trình duyệt.');
+          this.onStatusCallback?.(
+            'error',
+            'Chưa cấp quyền Micro trên trình duyệt. Hãy nhấn ổ khóa ở thanh địa chỉ để Cho phép.'
+          );
+          return;
+        }
+
+        if (error === 'audio-capture') {
+          this.status = 'error';
+          this.isRunning = false;
+          this.shouldRestart = false;
+          this.onStatusCallback?.('error', 'Không tìm thấy thiết bị thu âm Micro hoặc thiết bị đang bận.');
           return;
         }
 
         if (error === 'network') {
           this.onStatusCallback?.('listening', 'Đang kết nối lại mạng nhận dạng...');
+          this.scheduleRestart(800);
           return;
         }
 
-        this.onStatusCallback?.('listening', `Lắng nghe: ${error}`);
+        this.onStatusCallback?.('listening', 'Đang đồng bộ âm thanh...');
       };
 
       this.recognition.onend = () => {
         this.isRunning = false;
-        // Automatic reconnection for continuous live broadcast monitoring
+        this.isStarting = false;
+
+        // Auto restart for continuous 24/7 broadcast listening
         if (this.shouldRestart) {
-          setTimeout(() => {
-            if (this.shouldRestart && !this.isRunning) {
-              try {
-                this.recognition?.start();
-              } catch (err) {
-                console.warn('[LiveSpeechRecognizer] Restart error:', err);
-              }
-            }
-          }, 350);
+          this.scheduleRestart(350);
         } else {
           this.status = 'idle';
-          this.onStatusCallback?.('idle', 'Đã dừng nhận dạng âm thanh.');
+          this.onStatusCallback?.('idle', 'Đã tắt nhận dạng giọng nói.');
         }
       };
     } catch (err) {
@@ -148,14 +200,53 @@ export class LiveSpeechRecognizer {
     }
   }
 
+  private scheduleRestart(delayMs = 350) {
+    if (!this.shouldRestart) return;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+    }
+
+    this.restartTimer = setTimeout(() => {
+      if (this.shouldRestart && !this.isRunning && !this.isStarting) {
+        try {
+          this.isStarting = true;
+          this.recognition?.start();
+        } catch (err: any) {
+          this.isStarting = false;
+          if (err?.name !== 'InvalidStateError') {
+            console.warn('[LiveSpeechRecognizer] Restart error:', err);
+          }
+        }
+      }
+    }, delayMs);
+  }
+
   public setLanguage(lang: string) {
+    if (this.sourceLang === lang) return;
     this.sourceLang = lang;
+
     if (this.recognition) {
-      const wasRunning = this.isRunning;
-      this.stop();
+      const wasRunning = this.isRunning || this.shouldRestart;
+      if (this.restartTimer) {
+        clearTimeout(this.restartTimer);
+      }
+
+      this.shouldRestart = false;
+      this.isRunning = false;
+      this.isStarting = false;
+
+      try {
+        this.recognition.stop();
+      } catch {}
+
       this.recognition.lang = lang;
+      this.onStatusCallback?.('listening', 'Đang chuyển ngôn ngữ kênh...');
+
       if (wasRunning) {
-        setTimeout(() => this.start(), 200);
+        setTimeout(() => {
+          this.shouldRestart = true;
+          this.start();
+        }, 300);
       }
     }
   }
@@ -176,24 +267,32 @@ export class LiveSpeechRecognizer {
     this.onStatusCallback = onStatus;
   }
 
-  public start() {
+  public async start() {
     if (!this.isSupported()) {
       this.onStatusCallback?.('unsupported', 'Trình duyệt không hỗ trợ Web Speech API.');
       return;
     }
 
-    if (this.isRunning) return;
+    if (this.isRunning || this.isStarting) return;
 
     this.shouldRestart = true;
+    this.consecutiveAborts = 0;
+
+    // Check microphone permission first
+    const hasPermission = await this.requestMicrophonePermission();
+    if (!hasPermission) return;
+
     try {
       if (this.recognition) {
+        this.isStarting = true;
         this.recognition.lang = this.sourceLang;
         this.recognition.start();
       }
     } catch (err: any) {
-      // If already started or aborting, handle gracefully
+      this.isStarting = false;
       if (err?.name !== 'InvalidStateError') {
         console.warn('[LiveSpeechRecognizer] Start error:', err);
+        this.scheduleRestart(600);
       }
     }
   }
@@ -201,6 +300,12 @@ export class LiveSpeechRecognizer {
   public stop() {
     this.shouldRestart = false;
     this.isRunning = false;
+    this.isStarting = false;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+
     if (this.recognition) {
       try {
         this.recognition.stop();

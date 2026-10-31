@@ -47,6 +47,8 @@ import {
 import {
   TtsSettings,
   DEFAULT_TTS_SETTINGS,
+  GOOGLE_FEMALE_VOICE_ID,
+  isVoiceFemale,
   speakText,
   stopSpeaking,
   onVoicesChanged,
@@ -697,7 +699,7 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
                     </span>
                   </div>
                   <select
-                    value={ttsSettings?.voiceURI || ''}
+                    value={ttsSettings?.voiceURI || GOOGLE_FEMALE_VOICE_ID}
                     onChange={(e) => {
                       onChangeTtsSettings?.({
                         ...(ttsSettings || DEFAULT_TTS_SETTINGS),
@@ -706,25 +708,35 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
                     }}
                     className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1 text-xs text-neutral-200 focus:outline-none focus:border-amber-500"
                   >
-                    <option value="">-- Tự động chọn theo ngôn ngữ --</option>
+                    <optgroup label="🌸 Giọng Nữ Tiếng Việt (Khuyên Dùng)">
+                      <option value={GOOGLE_FEMALE_VOICE_ID}>
+                        👩 Giọng Nữ Tiếng Việt (Tự nhiên / Chuẩn Google - Mọi thiết bị)
+                      </option>
+                    </optgroup>
+
                     {voices.some(
                       (v) => (v.lang || '').toLowerCase().startsWith('vi') || v.name.toLowerCase().includes('vietnam')
                     ) && (
-                      <optgroup label="🇻🇳 Giọng Tiếng Việt">
+                      <optgroup label="🇻🇳 Giọng hệ thống (Thiết bị này)">
                         {voices
                           .filter(
                             (v) =>
                               (v.lang || '').toLowerCase().startsWith('vi') ||
                               v.name.toLowerCase().includes('vietnam')
                           )
-                          .map((v) => (
-                            <option key={v.voiceURI || v.name} value={v.voiceURI || v.name}>
-                              {v.name} ({v.lang})
-                            </option>
-                          ))}
+                          .map((v) => {
+                            const isFemale = isVoiceFemale(v);
+                            const tag = isFemale ? '👩 Nữ' : '👨 Nam';
+                            return (
+                              <option key={v.voiceURI || v.name} value={v.voiceURI || v.name}>
+                                {tag} - {v.name} ({v.lang})
+                              </option>
+                            );
+                          })}
                       </optgroup>
                     )}
-                    <optgroup label="🌐 Giọng khác">
+
+                    <optgroup label="🌐 Giọng quốc tế khác">
                       {voices
                         .filter(
                           (v) =>
@@ -776,7 +788,7 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
                     </div>
                   </div>
 
-                  {/* Pitch */}
+                  {/* Pitch (Cao độ) */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-[9.5px] font-bold text-neutral-400 uppercase flex items-center gap-1">
@@ -784,14 +796,14 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
                         <span>Cao độ</span>
                       </label>
                       <span className="text-[9.5px] font-mono text-violet-300 font-bold">
-                        {(ttsSettings?.pitch || 1.0) <= 0.9 ? 'Trầm' : (ttsSettings?.pitch || 1.0) >= 1.15 ? 'Bổng' : 'Chuẩn'}
+                        {(ttsSettings?.pitch || 1.0) <= 0.9 ? 'Trầm (Nam)' : (ttsSettings?.pitch || 1.0) >= 1.2 ? 'Thanh (Nữ)' : 'Chuẩn'}
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-0.5">
                       {[
                         { label: 'Trầm', val: 0.85 },
                         { label: 'Chuẩn', val: 1.0 },
-                        { label: 'Bổng', val: 1.2 },
+                        { label: 'Thanh', val: 1.25 },
                       ].map((item) => (
                         <button
                           key={item.val}
@@ -807,6 +819,7 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
                               ? 'bg-violet-600 text-white font-bold border-violet-500'
                               : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white'
                           }`}
+                          title={item.val >= 1.2 ? 'Cao độ thanh thoát, nữ tính' : item.val <= 0.9 ? 'Cao độ trầm ấm, nam tính' : 'Cao độ tự nhiên'}
                         >
                           {item.label}
                         </button>

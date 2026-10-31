@@ -5,6 +5,7 @@ import {
   SubtitleFontSize,
   SubtitlePosition,
 } from '../services/subtitleTranslator';
+import { Mic } from 'lucide-react';
 
 interface SubtitleOverlayProps {
   currentSubtitle: SubtitleCueItem | null;
@@ -27,17 +28,32 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
     return null;
   }
 
-  // Check if translated text is identical to original (untranslated foreign text)
+  const isLiveVoiceDraft = Boolean(
+    currentSubtitle.sourceType === 'speech-recognition' && currentSubtitle.isLoading
+  );
+
+  // Check if source and target language are the same (e.g. Vietnamese speech -> Vietnamese subtitles)
+  const isSameTargetLang = Boolean(
+    currentSubtitle.targetLang &&
+      currentSubtitle.sourceLang &&
+      (currentSubtitle.sourceLang.toLowerCase().startsWith(currentSubtitle.targetLang.toLowerCase()) ||
+        (currentSubtitle.sourceLang.toLowerCase().startsWith('vi') && currentSubtitle.targetLang === 'vi') ||
+        (currentSubtitle.sourceLang.toLowerCase().startsWith('en') && currentSubtitle.targetLang === 'en'))
+  );
+
+  // Check if translated text is identical to original foreign text (failed translation)
+  // NOTE: If source language IS the target language (e.g. Vietnamese), it is NOT untranslated!
   const isUntranslated =
+    !isSameTargetLang &&
     Boolean(currentSubtitle.translatedText && currentSubtitle.originalText) &&
     currentSubtitle.translatedText.trim().toLowerCase() === currentSubtitle.originalText.trim().toLowerCase();
 
-  // If in 'translated' mode and translation is not ready or untranslated, do not render
-  if (
-    displayMode === 'translated' &&
-    (!currentSubtitle.translatedText || !currentSubtitle.translatedText.trim() || isUntranslated)
-  ) {
-    return null;
+  // If in 'translated' mode and translation is not ready or untranslated (except live voice draft)
+  if (displayMode === 'translated') {
+    const hasValidTranslation = Boolean(currentSubtitle.translatedText && currentSubtitle.translatedText.trim() && !isUntranslated);
+    if (!hasValidTranslation && !isLiveVoiceDraft) {
+      return null;
+    }
   }
 
   // If in 'original' mode and original text is empty, do not render
@@ -87,8 +103,26 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
       <div
         className={`inline-block ${sizeClasses.padding} rounded-2xl bg-black/85 backdrop-blur-md border border-white/15 shadow-[0_10px_35px_rgba(0,0,0,0.95)] text-center transition-all animate-fadeIn`}
       >
+        {/* Real-time Voice Recognition Interim Draft (Active audio listening) */}
+        {isLiveVoiceDraft && !hasTranslation && (
+          <div className="flex items-center justify-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping flex-shrink-0" />
+            <p
+              className={`${sizeClasses.translated} text-[#FCD34D] font-extrabold tracking-wide flex items-center gap-1.5`}
+              style={{
+                WebkitTextStroke: '1px rgba(0, 0, 0, 0.95)',
+                textShadow:
+                  '0 2px 4px rgba(0,0,0,1), 0 0 10px rgba(0,0,0,0.95), 0 -1px 2px rgba(0,0,0,1), 1px 0 2px rgba(0,0,0,1), -1px 0 2px rgba(0,0,0,1)',
+              }}
+            >
+              <Mic className="w-3.5 h-3.5 text-rose-400 inline" />
+              <span>{currentSubtitle.originalText}</span>
+            </p>
+          </div>
+        )}
+
         {/* Dual Mode: Show Translated Text (Top) + Original Text (Bottom) */}
-        {displayMode === 'dual' && (
+        {!isLiveVoiceDraft && displayMode === 'dual' && (
           <div className="space-y-1">
             {/* Translated Text in vibrant Amber/Gold with high-contrast text stroke */}
             {hasTranslation ? (
@@ -116,7 +150,7 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
             )}
 
             {/* Original Text in soft italic neutral with crisp outline */}
-            {hasOriginal && hasTranslation && (
+            {hasOriginal && hasTranslation && !isSameTargetLang && (
               <p
                 className={`${sizeClasses.original} text-neutral-200/95 font-medium italic tracking-normal`}
                 style={{
@@ -131,7 +165,7 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
         )}
 
         {/* Translated Only Mode: 100% Pure Translated Subtitle Only */}
-        {displayMode === 'translated' && hasTranslation && (
+        {!isLiveVoiceDraft && displayMode === 'translated' && hasTranslation && (
           <p
             className={`${sizeClasses.translated} text-[#FCD34D] font-extrabold tracking-wide`}
             style={{
@@ -145,7 +179,7 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
         )}
 
         {/* Original Only Mode: 100% Pure Original Subtitle Only */}
-        {displayMode === 'original' && hasOriginal && (
+        {!isLiveVoiceDraft && displayMode === 'original' && hasOriginal && (
           <p
             className={`${sizeClasses.translated} text-white font-extrabold tracking-wide`}
             style={{
