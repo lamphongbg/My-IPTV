@@ -88,11 +88,31 @@ export function onVoicesChanged(callback: (voices: SpeechSynthesisVoice[]) => vo
 
 let activeAudio: HTMLAudioElement | null = null;
 let activeUtterance: SpeechSynthesisUtterance | null = null;
+let lastSpeakingEndTime: number = 0;
+
+/**
+ * Check if TTS is currently producing audio or within the reverberation echo buffer.
+ * Used for Acoustic Echo Suppression to prevent microphone Voice AI feedback loop.
+ */
+export function isCurrentlySpeaking(): boolean {
+  if (activeAudio && !activeAudio.paused && !activeAudio.ended) {
+    return true;
+  }
+  if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) {
+    return true;
+  }
+  // Acoustic reverb buffer (650ms) to ensure mic doesn't capture speaker echo
+  if (Date.now() - lastSpeakingEndTime < 650) {
+    return true;
+  }
+  return false;
+}
 
 /**
  * Stop any ongoing TTS speech (both HTML5 audio and browser synthesis)
  */
 export function stopSpeaking(): void {
+  lastSpeakingEndTime = Date.now();
   if (activeAudio) {
     try {
       activeAudio.pause();
@@ -150,11 +170,13 @@ function speakWithBrowserSpeech(
     }
 
     utterance.onend = () => {
+      lastSpeakingEndTime = Date.now();
       activeUtterance = null;
       onEnd?.();
     };
 
     utterance.onerror = (e) => {
+      lastSpeakingEndTime = Date.now();
       if (e.error !== 'canceled') {
         console.warn('[TTS] Browser speech synthesis error:', e);
       }
@@ -202,11 +224,13 @@ export function speakText(
       audio.volume = Math.max(0.1, Math.min(1.0, settings.volume || 1.0));
 
       audio.onended = () => {
+        lastSpeakingEndTime = Date.now();
         activeAudio = null;
         onEnd?.();
       };
 
       audio.onerror = () => {
+        lastSpeakingEndTime = Date.now();
         activeAudio = null;
         // Fallback to browser synthesis if network fails
         speakWithBrowserSpeech(text, lang, settings, onEnd);

@@ -30,6 +30,7 @@ import {
   CheckCircle,
   Flag,
   FileText,
+  Mic,
 } from 'lucide-react';
 import {
   SubtitleEngine,
@@ -50,7 +51,8 @@ import { SubtitleOverlay } from './SubtitleOverlay';
 import { SubtitleMenu } from './SubtitleMenu';
 import { SubtitleDiagnosticModal } from './SubtitleDiagnosticModal';
 import { SubtitleHistoryDrawer } from './SubtitleHistoryDrawer';
-import { speakText, stopSpeaking, TtsSettings, DEFAULT_TTS_SETTINGS } from '../services/transcriptService';
+import { MicrophonePermissionModal } from './MicrophonePermissionModal';
+import { speakText, stopSpeaking, isCurrentlySpeaking, TtsSettings, DEFAULT_TTS_SETTINGS } from '../services/transcriptService';
 
 export type AspectRatioMode = 'contain' | 'cover' | 'fill' | '16:9' | '4:3' | '21:9';
 
@@ -349,6 +351,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [liveSpeechMessage, setLiveSpeechMessage] = useState<string>('');
   const liveSpeechRecognizerRef = useRef<LiveSpeechRecognizer | null>(null);
   const [isSpeechSupported, setIsSpeechSupported] = useState<boolean>(true);
+  const [isMicPermissionModalOpen, setIsMicPermissionModalOpen] = useState<boolean>(false);
 
   // Phase 4: Gemini Context-Aware Genre states
   const [subtitleGenre, setSubtitleGenre] = useState<SubtitleGenre>(() => {
@@ -575,6 +578,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleProcessSpeechTranscript = useCallback(
     async (transcript: string, isFinal: boolean) => {
       if (!subtitlesEnabledRef.current || !transcript || !transcript.trim()) return;
+
+      // Acoustic Echo Suppression: When TTS reads out translation, prevent the microphone
+      // from catching the TTS speech and causing an infinite acoustic loop.
+      if (isCurrentlySpeaking()) {
+        return;
+      }
+
       const text = transcript.trim();
       const now = Date.now();
       const cueId = `voice_${now}_${Math.random().toString(36).substring(2, 6)}`;
@@ -724,13 +734,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       try {
         localStorage.setItem('iptv_live_speech_enabled', 'true');
       } catch {}
-      await liveSpeechRecognizerRef.current?.start();
+
+      // Prompt and check microphone permission directly upon clicking!
+      const granted = await liveSpeechRecognizerRef.current?.requestMicrophoneAccess();
+      if (!granted) {
+        setIsMicPermissionModalOpen(true);
+        setSubtitleNotice('🎙️ Vui lòng mở quyền Micro tại biểu tượng Ổ khóa 🔒 thanh URL');
+        if (subtitleNoticeTimerRef.current) clearTimeout(subtitleNoticeTimerRef.current);
+        subtitleNoticeTimerRef.current = setTimeout(() => setSubtitleNotice(null), 4000);
+      } else {
+        setSubtitleNotice('🎙️ Đã bật Bóc băng tiếng nói (Voice AI)! Đang lắng nghe...');
+        if (subtitleNoticeTimerRef.current) clearTimeout(subtitleNoticeTimerRef.current);
+        subtitleNoticeTimerRef.current = setTimeout(() => setSubtitleNotice(null), 3000);
+      }
     } else {
       setLiveSpeechEnabled(false);
       try {
         localStorage.setItem('iptv_live_speech_enabled', 'false');
       } catch {}
       liveSpeechRecognizerRef.current?.stop();
+      setSubtitleNotice('Đã tắt Bóc băng tiếng nói (Voice AI)');
+      if (subtitleNoticeTimerRef.current) clearTimeout(subtitleNoticeTimerRef.current);
+      subtitleNoticeTimerRef.current = setTimeout(() => setSubtitleNotice(null), 2500);
     }
   }, [liveSpeechEnabled]);
 
@@ -741,6 +766,41 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     } catch {}
     liveSpeechRecognizerRef.current?.setLanguage(lang);
   }, []);
+
+  const handleRequestMicPermission = useCallback(async () => {
+    if (!liveSpeechEnabled) {
+      setLiveSpeechEnabled(true);
+      try {
+        localStorage.setItem('iptv_live_speech_enabled', 'true');
+      } catch {}
+    }
+    if (!subtitlesEnabledRef.current) {
+      setSubtitlesEnabled(true);
+    }
+    const granted = await liveSpeechRecognizerRef.current?.requestMicrophoneAccess();
+    if (granted) {
+      setLiveSpeechStatus('listening');
+      setLiveSpeechMessage('Đã cấp quyền! Đang lắng nghe âm thanh kênh...');
+      setSubtitleNotice('🎙️ Đã cấp quyền Micro thành công! Đang lắng nghe...');
+      if (subtitleNoticeTimerRef.current) clearTimeout(subtitleNoticeTimerRef.current);
+      subtitleNoticeTimerRef.current = setTimeout(() => setSubtitleNotice(null), 3000);
+    } else {
+      setIsMicPermissionModalOpen(true);
+    }
+  }, [liveSpeechEnabled]);
+
+  const handleTestSpeechRecognition = useCallback(() => {
+    if (!subtitlesEnabledRef.current) {
+      setSubtitlesEnabled(true);
+    }
+    const testSample =
+      speechSourceLang === 'en-US'
+        ? 'Great pass by the point guard, and Armani Milan takes the lead in this crucial game!'
+        : speechSourceLang === 'zh-CN'
+        ? '精彩的三分球，球队现在领先两分！'
+        : 'Pha phối hợp tấn công rất nhanh và chính xác của các cầu thủ!';
+    handleProcessSpeechTranscript(testSample, true);
+  }, [speechSourceLang, handleProcessSpeechTranscript]);
 
   // Initialize LiveSpeechRecognizer (Audio Speech-to-Text for channels without CC)
   useEffect(() => {
@@ -2540,11 +2600,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
               </div>
 
-              {/* Live Stream Indicator */}
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-600/20 border border-red-500/40 text-[10px] sm:text-[11px] font-bold text-red-400 tracking-wider uppercase ml-1">
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="hidden xs:inline">TRỰC TIẾP</span>
-              </div>
+              {/* Nút Bóc băng tiếng nói (Voice AI) / Micro trực tiếp */}
+              <button
+                type="button"
+                onClick={handleToggleLiveSpeech}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all cursor-pointer active:scale-95 text-[10px] sm:text-[11px] font-bold tracking-wider uppercase ml-1 border shadow-sm ${
+                  liveSpeechEnabled
+                    ? 'bg-rose-600 border-rose-400 text-white shadow-rose-900/50 animate-pulse ring-2 ring-rose-500/40'
+                    : 'bg-red-950/70 hover:bg-red-900/90 border-red-600/60 text-red-300 hover:text-white'
+                }`}
+                title={
+                  liveSpeechEnabled
+                    ? 'Voice AI đang thu âm & bóc băng - Bấm để tắt'
+                    : 'Bấm để bật Bóc băng tiếng nói (Voice AI) & Dịch tức thì'
+                }
+              >
+                <span className={`w-2 h-2 rounded-full ${liveSpeechEnabled ? 'bg-white' : 'bg-red-500 animate-pulse'}`} />
+                <span className="flex items-center gap-1">
+                  <Mic className="w-3 h-3" />
+                  <span>{liveSpeechEnabled ? 'VOICE AI' : 'TRỰC TIẾP'}</span>
+                </span>
+              </button>
             </div>
 
             {/* Right Controls: CC, Tỷ lệ, Toàn màn hình */}
@@ -3045,6 +3121,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               onToggleAutoTts={() => setAutoTtsEnabled(!autoTtsEnabled)}
               ttsSettings={ttsSettings}
               onChangeTtsSettings={(s) => setTtsSettings(s)}
+              onRequestMicPermission={handleRequestMicPermission}
+              onTestSpeechRecognition={handleTestSpeechRecognition}
+              onOpenMicPermissionModal={() => setIsMicPermissionModalOpen(true)}
             />
           </div>
 
@@ -3139,12 +3218,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         autoTtsEnabled={autoTtsEnabled}
         onToggleAutoTts={() => setAutoTtsEnabled(!autoTtsEnabled)}
         ttsSettings={ttsSettings}
-        onChangeTtsSettings={(s) => setTtsSettings(s)}
+        onChangeTtsSettings={(s: TtsSettings) => setTtsSettings(s)}
         onTriggerSample={() => {
           if (!subtitlesEnabled) setSubtitlesEnabled(true);
           const sample = 'Live coverage from the international broadcast network.';
           handleProcessAggregatedSentence(sample, true);
         }}
+      />
+
+      {/* Microphone Permission Guide & Diagnostic Modal */}
+      <MicrophonePermissionModal
+        isOpen={isMicPermissionModalOpen}
+        onClose={() => setIsMicPermissionModalOpen(false)}
+        onPermissionGranted={() => {
+          setIsMicPermissionModalOpen(false);
+          setLiveSpeechEnabled(true);
+          try {
+            localStorage.setItem('iptv_live_speech_enabled', 'true');
+          } catch {}
+          liveSpeechRecognizerRef.current?.start();
+          setSubtitleNotice('🎙️ Đã cấp quyền Micro! Đang lắng nghe âm thanh kênh...');
+          if (subtitleNoticeTimerRef.current) clearTimeout(subtitleNoticeTimerRef.current);
+          subtitleNoticeTimerRef.current = setTimeout(() => setSubtitleNotice(null), 3500);
+        }}
+        onTriggerTestSample={handleTestSpeechRecognition}
       />
     </div>
   );

@@ -93,6 +93,9 @@ interface SubtitleMenuProps {
   onToggleAutoTts?: () => void;
   ttsSettings?: TtsSettings;
   onChangeTtsSettings?: (settings: TtsSettings) => void;
+  onRequestMicPermission?: () => void;
+  onTestSpeechRecognition?: () => void;
+  onOpenMicPermissionModal?: () => void;
 }
 
 export type SubtitleMenuTab = 'translation' | 'style' | 'voice';
@@ -147,6 +150,9 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
   onToggleAutoTts,
   ttsSettings,
   onChangeTtsSettings,
+  onRequestMicPermission,
+  onTestSpeechRecognition,
+  onOpenMicPermissionModal,
 }) => {
   const [activeTab, setActiveTab] = useState<SubtitleMenuTab>(() => {
     try {
@@ -650,6 +656,52 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
         {/* ================= TAB 3: GIỌNG ĐỌC & AUDIO AI (VOICE & SPEECH) ================= */}
         {activeTab === 'voice' && (
           <div className="space-y-3 animate-fadeIn">
+            {/* Banner / Combo toggle for Simultaneous Dubbing */}
+            {autoTtsEnabled && liveSpeechEnabled ? (
+              <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-950/60 via-purple-950/40 to-rose-950/60 border border-amber-500/50 shadow-md">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm">🎧</span>
+                    <span className="text-[11px] font-bold text-amber-200">
+                      Thuyết minh Trực tiếp (Simultaneous Dubbing)
+                    </span>
+                  </div>
+                  <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold border border-emerald-500/30">
+                    Đang hoạt động
+                  </span>
+                </div>
+                <p className="text-[9.5px] text-neutral-300 leading-tight">
+                  Voice AI vừa lắng nghe âm thanh kênh, vừa dịch tức thì và phát âm thanh thuyết minh bằng tiếng Việt.
+                </p>
+                <div className="mt-1.5 flex items-center gap-1 text-[9px] text-amber-300/90 font-medium">
+                  <span>🛡️</span>
+                  <span>Đã kích hoạt chống vọng âm (Acoustic Echo Suppression) giữa Loa và Micro.</span>
+                </div>
+              </div>
+            ) : (
+              <div className="p-2 rounded-xl bg-neutral-900/60 border border-neutral-800/80 flex items-center justify-between">
+                <div>
+                  <div className="text-[10.5px] font-bold text-white flex items-center gap-1.5">
+                    <span>🎧 Thuyết minh Trực tiếp Cabin</span>
+                    <span className="text-[9px] text-amber-400 font-semibold">(Voice AI + Giọng đọc)</span>
+                  </div>
+                  <div className="text-[9px] text-neutral-400">
+                    Bật cả 2 tính năng cùng lúc để AI vừa nghe vừa đọc bản dịch
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!autoTtsEnabled && onToggleAutoTts) onToggleAutoTts();
+                    if (!liveSpeechEnabled && onToggleLiveSpeech) onToggleLiveSpeech();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 text-[10px] font-bold transition shadow-sm cursor-pointer whitespace-nowrap active:scale-95"
+                >
+                  Bật cả 2
+                </button>
+              </div>
+            )}
+
             {/* 1. Đọc phát âm phụ đề (TTS) */}
             <div className="p-2.5 rounded-xl bg-neutral-900/80 border border-neutral-800 space-y-2.5">
               <div className="flex items-center justify-between">
@@ -929,24 +981,90 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
 
               {/* Status Wave when active */}
               {liveSpeechEnabled && (
-                <div className="p-1.5 rounded-lg bg-neutral-950/80 border border-neutral-800 flex items-center justify-between text-[10px]">
-                  <div className="flex items-center gap-1.5 text-rose-300 font-mono truncate mr-2">
-                    <Activity className="w-3 h-3 text-rose-400 animate-pulse flex-shrink-0" />
-                    <span className="truncate">{liveSpeechMessage || 'Đang lắng nghe âm thanh kênh phát...'}</span>
+                <div className="p-2 rounded-lg bg-neutral-950/80 border border-neutral-800 space-y-1.5 text-[10px]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-rose-300 font-mono truncate mr-2">
+                      <Activity className="w-3 h-3 text-rose-400 animate-pulse flex-shrink-0" />
+                      <span className="truncate">{liveSpeechMessage || 'Đang lắng nghe âm thanh kênh phát...'}</span>
+                    </div>
+                    <div className="flex items-center gap-0.5 h-2.5 flex-shrink-0">
+                      <span className="w-0.5 h-2 bg-rose-500 animate-bounce" />
+                      <span className="w-0.5 h-2.5 bg-rose-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-0.5 h-1.5 bg-rose-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-0.5 h-2.5 flex-shrink-0">
-                    <span className="w-0.5 h-2 bg-rose-500 animate-bounce" />
-                    <span className="w-0.5 h-2.5 bg-rose-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-0.5 h-1.5 bg-rose-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
+
+                  {/* Micro permission helper box */}
+                  {(liveSpeechStatus === 'error' ||
+                    (liveSpeechMessage && liveSpeechMessage.toLowerCase().includes('micro'))) && (
+                    <div className="space-y-1.5 pt-1.5 border-t border-neutral-800/80">
+                      <div className="text-[9.5px] text-rose-300 font-medium leading-relaxed">
+                        ⚠️ Trình duyệt cần cấp quyền Micro để AI nghe âm thanh kênh.
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onRequestMicPermission) {
+                              onRequestMicPermission();
+                            } else if (onOpenMicPermissionModal) {
+                              onOpenMicPermissionModal();
+                            } else if (onToggleLiveSpeech) {
+                              onToggleLiveSpeech();
+                            }
+                          }}
+                          className="flex-1 py-1 px-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-[10.5px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-md"
+                        >
+                          <Mic className="w-3.5 h-3.5 animate-pulse" />
+                          <span>Cấp quyền Micro ngay</span>
+                        </button>
+                        {onOpenMicPermissionModal && (
+                          <button
+                            type="button"
+                            onClick={onOpenMicPermissionModal}
+                            className="py-1 px-2 bg-neutral-800 hover:bg-neutral-700 text-amber-300 hover:text-amber-200 rounded-lg text-[10px] font-semibold transition border border-neutral-700 cursor-pointer active:scale-95 flex items-center gap-1"
+                            title="Mở hướng dẫn chi tiết cách mở khóa Micro"
+                          >
+                            <span>Hướng dẫn</span>
+                          </button>
+                        )}
+                        {onTestSpeechRecognition && (
+                          <button
+                            type="button"
+                            onClick={onTestSpeechRecognition}
+                            className="py-1 px-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white rounded-lg text-[10px] font-semibold transition border border-neutral-700 cursor-pointer active:scale-95"
+                            title="Kiểm tra ngay luồng bóc băng, dịch và hiển thị phụ đề"
+                          >
+                            Thử mẫu
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-[9px] text-neutral-400 bg-neutral-950/80 p-1.5 rounded-lg border border-neutral-800/80 leading-relaxed">
+                        💡 <strong>Lưu ý:</strong> Nếu trình duyệt không hiện popup xin quyền, hãy nhấp vào <strong>Ổ khóa 🔒</strong> ở góc trái thanh địa chỉ URL &gt; Chuyển <strong>Microphone</strong> sang <strong>Cho phép (Allow)</strong>.
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Ngôn ngữ giọng nói phát (Kênh đang nói) - Clean labels */}
               <div>
-                <label className="text-[9.5px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">
-                  Ngôn ngữ kênh đang nói (Nguồn)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[9.5px] font-bold text-neutral-400 uppercase tracking-wider block">
+                    Ngôn ngữ kênh đang nói (Nguồn)
+                  </label>
+                  {onTestSpeechRecognition && (
+                    <button
+                      type="button"
+                      onClick={onTestSpeechRecognition}
+                      className="text-[9.5px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer underline flex items-center gap-0.5"
+                    >
+                      <Sparkles className="w-2.5 h-2.5" />
+                      <span>Thử mẫu nhận diện</span>
+                    </button>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-3 gap-1">
                   {SPOKEN_LANGUAGES.slice(0, 6).map((sl) => {
                     const isSelected = speechSourceLang === sl.code;
@@ -972,6 +1090,22 @@ export const SubtitleMenu: React.FC<SubtitleMenuProps> = ({
                     );
                   })}
                 </div>
+
+                {/* Quick recommendation for sports/international if non-English is selected */}
+                {speechSourceLang !== 'en-US' && (
+                  <div className="mt-1.5 p-1.5 rounded-lg bg-sky-950/40 border border-sky-800/60 flex items-center justify-between text-[9.5px]">
+                    <span className="text-sky-300 font-medium">
+                      🏀 Kênh thể thao / quốc tế thường bình luận bằng <strong>Tiếng Anh</strong>.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onChangeSpeechSourceLang?.('en-US')}
+                      className="px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded text-[9px] transition cursor-pointer whitespace-nowrap ml-1 shadow-sm active:scale-95"
+                    >
+                      🇺🇸 Chọn Tiếng Anh
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

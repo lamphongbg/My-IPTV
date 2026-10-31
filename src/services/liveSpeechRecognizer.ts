@@ -47,26 +47,31 @@ export class LiveSpeechRecognizer {
   }
 
   /**
-   * Request browser microphone permission explicitly to avoid 'not-allowed' and 'aborted'
+   * Explicitly request browser microphone permission through user gesture
    */
-  public async requestMicrophonePermission(): Promise<boolean> {
+  public async requestMicrophoneAccess(): Promise<boolean> {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       return true;
     }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Stop stream tracks immediately so SpeechRecognition has exclusive audio input access
+      // Stop stream tracks so SpeechRecognition has dedicated input
       stream.getTracks().forEach((track) => track.stop());
+      this.status = 'listening';
+      this.shouldRestart = true;
+      this.consecutiveAborts = 0;
+      this.onStatusCallback?.('listening', 'Đã cấp quyền! Đang lắng nghe âm thanh kênh...');
+      await this.start();
       return true;
     } catch (err: any) {
-      console.warn('[LiveSpeechRecognizer] Microphone permission inquiry:', err);
+      console.warn('[LiveSpeechRecognizer] Microphone permission request:', err);
       if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
         this.status = 'error';
         this.shouldRestart = false;
         this.onStatusCallback?.(
           'error',
-          'Vui lòng cho phép quyền truy cập Micro trên trình duyệt (bấm biểu tượng ổ khóa cạnh thanh địa chỉ) để AI nghe âm thanh kênh.'
+          'Chưa cấp quyền Micro trên trình duyệt. Nhấn Ổ khóa 🔒 ở thanh URL > chọn "Cho phép Micro".'
         );
         return false;
       }
@@ -189,7 +194,7 @@ export class LiveSpeechRecognizer {
         // Auto restart for continuous 24/7 broadcast listening
         if (this.shouldRestart) {
           this.scheduleRestart(350);
-        } else {
+        } else if (this.status !== 'error') {
           this.status = 'idle';
           this.onStatusCallback?.('idle', 'Đã tắt nhận dạng giọng nói.');
         }
@@ -197,6 +202,21 @@ export class LiveSpeechRecognizer {
     } catch (err) {
       console.warn('[LiveSpeechRecognizer] Initialization error:', err);
       this.status = 'unsupported';
+    }
+  }
+
+  /**
+   * Query browser permission state for microphone
+   */
+  public async checkPermissionState(): Promise<'granted' | 'prompt' | 'denied' | 'unsupported'> {
+    if (typeof navigator === 'undefined' || !navigator.permissions?.query) {
+      return 'unsupported';
+    }
+    try {
+      const result = await navigator.permissions.query({ name: 'microphone' as any });
+      return result.state;
+    } catch {
+      return 'unsupported';
     }
   }
 
@@ -269,18 +289,15 @@ export class LiveSpeechRecognizer {
 
   public async start() {
     if (!this.isSupported()) {
+      this.status = 'unsupported';
       this.onStatusCallback?.('unsupported', 'Trình duyệt không hỗ trợ Web Speech API.');
       return;
     }
 
-    if (this.isRunning || this.isStarting) return;
+    if (this.isRunning) return;
 
     this.shouldRestart = true;
     this.consecutiveAborts = 0;
-
-    // Check microphone permission first
-    const hasPermission = await this.requestMicrophonePermission();
-    if (!hasPermission) return;
 
     try {
       if (this.recognition) {
@@ -290,8 +307,11 @@ export class LiveSpeechRecognizer {
       }
     } catch (err: any) {
       this.isStarting = false;
-      if (err?.name !== 'InvalidStateError') {
-        console.warn('[LiveSpeechRecognizer] Start error:', err);
+      if (err?.name === 'InvalidStateError') {
+        // Recognition is already active or in start transition
+        this.isRunning = true;
+      } else {
+        console.warn('[LiveSpeechRecognizer] Direct start exception:', err);
         this.scheduleRestart(600);
       }
     }
